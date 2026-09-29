@@ -870,6 +870,50 @@ h4 {
   box-shadow: inset 0 3px 0 var(--ouro);
 }
 
+/* ---------------------------------------------------------------- campo com unidade */
+.campo__rotulo--com-unidade {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.unidade {
+  display: inline-flex;
+  border: 1px solid var(--linha-forte);
+  border-radius: 999px;
+  padding: 2px;
+}
+.unidade__op {
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--texto-2);
+}
+.unidade__op--ativa {
+  background: var(--indigo);
+  color: var(--branco);
+}
+.campo__info {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--texto-2);
+  background: var(--suave);
+  border-left: 2px solid var(--ouro);
+  padding: 8px 10px;
+  border-radius: 0 6px 6px 0;
+}
+.linha--margem th,
+.linha--margem td {
+  font-weight: 800;
+  border-bottom: 0;
+}
+.linha--margem td.col-ativa {
+  box-shadow: inset 0 -2px 0 var(--ouro);
+}
+
 /* ---------------------------------------------------------------- compra */
 .compra__grade {
   display: grid;

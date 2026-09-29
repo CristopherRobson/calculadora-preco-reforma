@@ -69,59 +69,32 @@ export function formarPreco({ custo, fixos = 0, dentro = 0, ic = 0, despesas = 0
 }
 
 // ---------------------------------------------------------------------------
-// Compra: custo de hoje e custo real no ano (T2)
-// O valor da compra é informado SEM PIS/Cofins. Fornecedor do Simples: valor da nota.
+// Compra: o valor informado é o total da nota fiscal de compra.
+// Custo = nota − créditos. Hoje (e em 2026): crédito de PIS/Cofins (só Lucro Real) e ICMS.
+// A partir de 2027: crédito do IBS/CBS destacado na nota e do ICMS.
 // ---------------------------------------------------------------------------
 
 const ehSimples = (r) => r === 'simples_unico' || r === 'simples_hibrido';
 
-/** Nota e custo de hoje (PIS/Cofins ainda dentro do preço do fornecedor). */
-export function compraHoje({ V, fornecedor, icmsFornecedor = 0, creditaPis = false, creditaIcms = false, pisCum = 0.0365, pisNaoCum = 0.0925 }) {
-  if (ehSimples(fornecedor)) {
-    const nota = r2(V);
-    const creditoPis = creditaPis ? r2(nota * pisNaoCum) : 0;
-    return { s: 0, nota, icmsV: 0, creditoPis, creditoIcms: 0, custo: r2(nota - creditoPis) };
-  }
-  const s = fornecedor === 'real' ? pisNaoCum : pisCum;
-  const nota = r2(V / (1 - s));
-  const icmsV = r2(nota * icmsFornecedor);
+/** Custo de hoje (e de 2026): o Lucro Real credita 9,25% de PIS/Cofins, qualquer que seja o fornecedor. */
+export function compraHoje({ V, icmsV = 0, creditaPis = false, creditaIcms = false, pisNaoCum = 0.0925 }) {
+  const nota = r2(V);
   const creditoPis = creditaPis ? r2(nota * pisNaoCum) : 0;
-  const creditoIcms = creditaIcms ? icmsV : 0;
-  return { s, nota, icmsV, creditoPis, creditoIcms, custo: r2(nota - creditoPis - creditoIcms) };
+  const creditoIcms = creditaIcms ? r2(icmsV) : 0;
+  return { nota, icmsV: r2(icmsV), creditoPis, creditoIcms, custo: r2(nota - creditoPis - creditoIcms) };
 }
 
 /**
- * Nota e custo real da compra no ano (a partir de 2027).
- * Repasse integral: o fornecedor mantém o preço líquido de tributos e ajusta o ICMS do ano.
+ * Custo real da compra a partir de 2027.
+ * Fornecedor do Simples Nacional: crédito = nota × DAS estimado × 15,5%.
+ * Demais fornecedores (inclusive Simples Híbrido): crédito integral do IBS/CBS destacado.
  */
-export function custoDaCompra({ V, fornecedor, dasFornecedor = 0.08, parcela = 0.155, icmsFornecedor = 0, fator = 1, creditaIbs, creditaIcms = false, cbs, ibs }) {
-  if (fornecedor === 'simples_unico') {
-    const nota = r2(V);
-    const creditoPossivel = r2(V * dasFornecedor * parcela);
-    const credito = creditaIbs ? creditoPossivel : 0;
-    return { s: 0, base: null, precoForn: nota, icmsV: 0, icY: 0, cbsV: 0, ibsV: 0, nota, creditoIcms: 0, creditoPossivel, credito, custo: r2(nota - credito) };
-  }
-  let s = 0;
-  let liquido;
-  let precoForn;
-  let icY = 0;
-  if (fornecedor === 'simples_hibrido') {
-    s = dasFornecedor * parcela;
-    liquido = r2(V * (1 - s));
-    precoForn = liquido;
-  } else {
-    icY = icmsFornecedor * fator;
-    liquido = V * (1 - icmsFornecedor);
-    precoForn = liquido / (1 - icY);
-  }
-  const icmsV = r2(precoForn * icY);
-  const cbsV = r2(liquido * cbs);
-  const ibsV = r2(liquido * ibs);
-  const nota = r2(r2(precoForn) + cbsV + ibsV);
-  const creditoPossivel = r2(cbsV + ibsV);
+export function custoDaCompra({ V, fornecedor, dasFornecedor = 0.08, parcela = 0.155, icmsV = 0, ibsCbsV = 0, creditaIbs, creditaIcms = false }) {
+  const nota = r2(V);
+  const creditoPossivel = fornecedor === 'simples_unico' ? r2(V * dasFornecedor * parcela) : r2(ibsCbsV);
   const credito = creditaIbs ? creditoPossivel : 0;
-  const creditoIcms = creditaIcms ? icmsV : 0;
-  return { s, base: r2(liquido), liquido, precoForn, icmsV, icY, cbsV, ibsV, nota, creditoIcms, creditoPossivel, credito, custo: r2(nota - credito - creditoIcms) };
+  const creditoIcms = creditaIcms ? r2(icmsV) : 0;
+  return { nota, icmsV: r2(icmsV), ibsCbsV: r2(ibsCbsV), creditoPossivel, credito, creditoIcms, custo: r2(nota - credito - creditoIcms) };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,15 +134,18 @@ export function contextoVendedor({ regime, atividade, das = 0, p, taxas, hoje })
     itens.push({ id: 'das', nome: 'DAS', aliq: das, base: BL.simples });
     porFora = false;
   } else if (regime === 'simples_hibrido') {
-    if (hoje) itens.push({ id: 'das', nome: 'DAS', aliq: das, base: BL.simples });
-    else
+    // O DAS informado já é a carga do híbrido (sem IBS/CBS). Hoje ainda não há híbrido:
+    // o DAS cheio é reconstruído dividindo por (1 − parcela de IBS/CBS).
+    const cheio = das / (1 - pct(p.parcelaIbsCbsNoDas));
+    if (hoje)
       itens.push({
         id: 'das',
-        nome: 'DAS sem a parcela de IBS/CBS',
-        aliq: das * (1 - pct(p.parcelaIbsCbsNoDas)),
-        base: BL.hibrido,
-        detalhe: `${P(das)} × (1 − ${R(p.parcelaIbsCbsNoDas)}%) = ${P(das * (1 - pct(p.parcelaIbsCbsNoDas)))}`,
+        nome: 'DAS cheio',
+        aliq: cheio,
+        base: BL.simples,
+        detalhe: `DAS do híbrido ${P(das)} ÷ (1 − ${R(p.parcelaIbsCbsNoDas)}%) = ${P(cheio)}`,
       });
+    else itens.push({ id: 'das', nome: 'DAS do híbrido (sem IBS/CBS)', aliq: das, base: BL.hibrido, detalhe: 'Alíquota informada, já sem a parcela de IBS/CBS' });
   }
   if (regular) ic = hoje ? taxas.aliqLocal : taxas.ic;
   return {
@@ -231,6 +207,7 @@ export function dre(preco, ctx, { custo, fixos = 0, despVar = 0, chaveS, taxas }
     lair,
     ir,
     lucroLiquido,
+    margemPreco: preco > 0 ? lucroLiquido / preco : 0,
     margemLiquida: receitaLiquida > 0 ? lucroLiquido / receitaLiquida : 0,
   };
 }
@@ -285,7 +262,10 @@ export const ENTRADAS_PADRAO = {
   das: 8,
   valorCompra: 100,
   fornecedor: 'real',
+  icmsModo: 'pct', // 'pct' | 'rs'
   icmsFornecedor: 0,
+  ibsCbsModo: 'pct', // 'pct' | 'rs'
+  ibsCbsCompra: '', // vazio = alíquota IBS + CBS do ano
   usoPessoal: false,
   despesasVar: 10,
   despesasFixas: 0,
@@ -324,33 +304,31 @@ export function simular(ent, p, opts = {}) {
   const V = Number(ent.valorCompra) || 0;
   const parcela = pct(p.parcelaIbsCbsNoDas);
   const pisNaoCum = pct(p.pisCofinsNaoCumulativo);
-  const pisCum = pct(p.pisCofinsCumulativo);
   const irLr = pct(p.irLucroReal);
   const ehReal = ent.regime === 'real';
-  const icmsForn = ehSimples(ent.fornecedor) ? 0 : pct(ent.icmsFornecedor);
+  const fornSimples = ehSimples(ent.fornecedor);
+  const icmsRs = ent.icmsModo === 'rs';
+  const icmsPct = fornSimples || icmsRs ? 0 : pct(ent.icmsFornecedor);
+  // ICMS da nota de compra: em %, alíquota cheia reduzida pelo fator do ano; em R$, valor fixo
+  const icmsHojeV = fornSimples ? 0 : icmsRs ? Number(ent.icmsFornecedor) || 0 : r2(V * icmsPct);
+  const icmsAnoV = fornSimples ? 0 : icmsRs ? Number(ent.icmsFornecedor) || 0 : r2(V * icmsPct * taxas.fator);
+  // IBS/CBS da nota de compra: vazio = alíquota do ano sobre a nota; % informado; ou R$
+  const ibsVazio = ent.ibsCbsCompra === '' || ent.ibsCbsCompra === null || ent.ibsCbsCompra === undefined;
+  const ibsRs = ent.ibsCbsModo === 'rs' && !ibsVazio;
+  const ibsPct = ibsVazio ? taxas.a : pct(ent.ibsCbsCompra);
+  const ibsCbsV = ibsRs ? Number(ent.ibsCbsCompra) || 0 : r2(V * ibsPct);
 
   registrarTaxas(mem, taxas, ano);
 
   // --- Compra ------------------------------------------------------------------
   const cred = creditosDoComprador({ ...ent, atividade });
-  const compra0 = compraHoje({ V, fornecedor: ent.fornecedor, icmsFornecedor: icmsForn, creditaPis: cred.pis, creditaIcms: cred.icms, pisCum, pisNaoCum });
+  const compra0 = compraHoje({ V, icmsV: icmsHojeV, creditaPis: cred.pis, creditaIcms: cred.icms, pisNaoCum });
   const compra = taxas.teste
     ? null
-    : custoDaCompra({
-        V,
-        fornecedor: ent.fornecedor,
-        dasFornecedor: pct(p.dasFornecedor),
-        parcela,
-        icmsFornecedor: icmsForn,
-        fator: taxas.fator,
-        creditaIbs: cred.ibs,
-        creditaIcms: cred.icms,
-        cbs: taxas.cbs,
-        ibs: taxas.ibs,
-      });
+    : custoDaCompra({ V, fornecedor: ent.fornecedor, dasFornecedor: pct(p.dasFornecedor), parcela, icmsV: icmsAnoV, ibsCbsV, creditaIbs: cred.ibs, creditaIcms: cred.icms });
   const cHoje = opts.custoHojeFixo ?? compra0.custo;
   const cAno = opts.custoAnoFixo ?? (compra ? compra.custo : compra0.custo);
-  registrarCompra(mem, { V, ent, compra0, compra, cHoje, cAno, taxas, cred, pisNaoCum, pisCum, icmsForn, parcela, dasF: pct(p.dasFornecedor) });
+  registrarCompra(mem, { V, ent, compra0, compra, cHoje, cAno, taxas, pisNaoCum, icmsPct, icmsRs, ibsVazio, ibsRs, ibsPct, parcela, dasF: pct(p.dasFornecedor) });
 
   // --- Custos/despesas fixos ---------------------------------------------------
   const fixoHoje = cHoje * fixosPct;
@@ -499,124 +477,97 @@ function registrarTaxas(mem, taxas, ano) {
   });
 }
 
-function registrarCompra(mem, { V, ent, compra0, compra, cHoje, cAno, taxas, cred, pisNaoCum, pisCum, icmsForn, parcela, dasF }) {
-  const forn = FORNECEDORES[ent.fornecedor];
-  const simples = ehSimples(ent.fornecedor);
-  const sPis = ent.fornecedor === 'real' ? pisNaoCum : pisCum;
+function registrarCompra(mem, { V, ent, compra0, compra, cHoje, cAno, taxas, pisNaoCum, icmsPct, icmsRs, ibsVazio, ibsRs, ibsPct, parcela, dasF }) {
   const semCredito = (tipo) =>
     ent.usoPessoal
       ? 'compra para uso e consumo pessoal não dá crédito'
       : tipo === 'icms'
         ? 'sua empresa não toma crédito de ICMS (Simples ou atividade de serviço)'
-        : 'empresa no Simples Nacional (sem opção pelo híbrido) não toma crédito';
+        : tipo === 'pis'
+          ? 'só o Lucro Real credita PIS/Cofins'
+          : 'empresa no Simples Nacional (sem opção pelo híbrido) não toma crédito';
 
-  mem.reg('compra.V', V, {
-    rotulo: simples ? 'Valor da nota de compra' : 'Valor da compra sem PIS/Cofins',
-    formula: simples ? 'Valor informado (fornecedor do Simples: valor da nota)' : 'Valor informado, sem PIS/Cofins',
-    subst: R(V),
-  });
+  mem.reg('compra.V', V, { rotulo: 'Valor da nota fiscal de compra', formula: 'Valor total da nota, informado', subst: R(V) });
 
-  // Hoje
-  mem.reg('compra.hojeNota', compra0.nota, {
-    rotulo: 'Nota de compra hoje',
-    formula: simples ? 'Fornecedor do Simples: a nota é o valor informado' : `Nota hoje = valor sem PIS/Cofins ÷ (1 − PIS/Cofins do fornecedor). Fornecedor ${forn}: ${P(sPis)}`,
-    subst: simples ? R(compra0.nota) : `${R(V)} ÷ (1 − ${P(sPis)}) = ${R(compra0.nota)}`,
-    base: ent.fornecedor === 'real' ? BL.pisNaoCum : ent.fornecedor === 'presumido' ? BL.pisCum : BL.simples,
-  });
+  // Hoje / 2026
   if (compra0.icmsV) {
-    mem.reg('compra.hojeIcms', compra0.icmsV, { rotulo: 'ICMS na nota de compra hoje', formula: 'ICMS = nota × alíquota do ICMS do fornecedor', subst: `${R(compra0.nota)} × ${P(icmsForn)} = ${R(compra0.icmsV)}`, base: BL.icms });
-  }
-  if (compra0.icmsV) {
+    mem.reg('compra.hojeIcms', compra0.icmsV, {
+      rotulo: 'ICMS destacado na nota (hoje)',
+      formula: icmsRs ? 'Valor informado em R$' : 'ICMS = nota × alíquota do ICMS do fornecedor',
+      subst: icmsRs ? R(compra0.icmsV) : `${R(V)} × ${P(icmsPct)} = ${R(compra0.icmsV)}`,
+      base: BL.icms,
+    });
     mem.reg('compra.hojeCreditoIcms', compra0.creditoIcms, {
-      rotulo: 'Crédito de ICMS hoje',
-      formula: compra0.creditoIcms ? 'ICMS destacado na nota de compra vira crédito' : 'Sem crédito: ' + semCredito('icms'),
+      rotulo: 'Crédito de ICMS (hoje)',
+      formula: compra0.creditoIcms ? 'O ICMS destacado vira crédito' : 'Sem crédito: ' + semCredito('icms'),
       subst: R(compra0.creditoIcms),
       base: BL.icmsCredito,
     });
   }
   mem.reg('compra.hojeCreditoPis', compra0.creditoPis, {
-    rotulo: 'Crédito de PIS/Cofins hoje',
-    formula: compra0.creditoPis ? 'Lucro Real credita PIS/Cofins: nota × 9,25%' : 'Sem crédito de PIS/Cofins (só o Lucro Real credita)',
-    subst: compra0.creditoPis ? `${R(compra0.nota)} × ${P(pisNaoCum)} = ${R(compra0.creditoPis)}` : '0,00',
+    rotulo: 'Crédito de PIS/Cofins (hoje)',
+    formula: compra0.creditoPis ? 'Lucro Real credita PIS/Cofins sobre a nota, qualquer que seja o fornecedor' : 'Sem crédito: ' + semCredito('pis'),
+    subst: compra0.creditoPis ? `${R(V)} × ${P(pisNaoCum)} = ${R(compra0.creditoPis)}` : '0,00',
     base: BL.pisNaoCum,
   });
   mem.reg('compra.hoje', cHoje, {
-    rotulo: 'Custo da mercadoria hoje',
-    formula: 'Custo hoje = nota − créditos de PIS/Cofins e ICMS',
-    subst: `${R(compra0.nota)} − ${R(compra0.creditoPis)} − ${R(compra0.creditoIcms)} = ${R(cHoje)}`,
+    rotulo: taxas.teste ? 'Custo da mercadoria hoje e em 2026' : 'Custo da mercadoria hoje',
+    formula: 'Custo = nota − crédito de PIS/Cofins − crédito de ICMS',
+    subst: `${R(V)} − ${R(compra0.creditoPis)} − ${R(compra0.creditoIcms)} = ${R(cHoje)}`,
     base: BL.pisNaoCum,
   });
 
-  // No ano
   if (!compra) {
     mem.reg('compra.custo', cAno, {
-      rotulo: `Custo real da mercadoria ${taxas.ano}`,
-      formula: '2026 é ano de teste: PIS/Cofins e ICMS continuam como hoje; o custo não muda',
+      rotulo: 'Custo da mercadoria 2026',
+      formula: '2026 é ano de teste: PIS/Cofins e ICMS como hoje. Lucro Real: nota − 9,25%; demais regimes: a nota (menos o ICMS, se credita)',
       subst: R(cAno),
       base: BL.teste2026,
     });
     return;
   }
+
+  // A partir de 2027
+  if (compra.icmsV) {
+    mem.reg('compra.icms', compra.icmsV, {
+      rotulo: `ICMS destacado na nota (${taxas.ano})`,
+      formula: icmsRs ? 'Valor informado em R$' : 'ICMS = nota × alíquota do fornecedor × fator do ano',
+      subst: icmsRs ? R(compra.icmsV) : `${R(V)} × ${P(icmsPct)} × ${String(taxas.fator).replace('.', ',')} = ${R(compra.icmsV)}`,
+      base: `${BL.icms} · ${BL.icmsFator}`,
+    });
+    mem.reg('compra.creditoIcms', compra.creditoIcms, {
+      rotulo: `Crédito de ICMS (${taxas.ano})`,
+      formula: compra.creditoIcms ? 'O ICMS destacado vira crédito' : 'Sem crédito: ' + semCredito('icms'),
+      subst: R(compra.creditoIcms),
+      base: BL.icmsCredito,
+    });
+  }
   if (ent.fornecedor === 'simples_unico') {
-    mem.reg('compra.nota', compra.nota, { rotulo: `Nota de compra ${taxas.ano}`, formula: 'Fornecedor do Simples: a nota não muda (IBS/CBS dentro do DAS)', subst: R(compra.nota), base: BL.simples });
     mem.reg('compra.credito', compra.credito, {
-      rotulo: 'Crédito de IBS/CBS na compra',
-      formula: compra.credito ? 'Crédito = nota × DAS estimado do fornecedor × parcela de IBS/CBS no DAS' : 'Sem crédito: ' + semCredito('ibs'),
+      rotulo: 'Crédito de IBS/CBS',
+      formula: compra.credito ? 'Fornecedor do Simples Nacional: crédito = nota × DAS estimado × parcela de IBS/CBS no DAS' : 'Sem crédito: ' + semCredito('ibs'),
       subst: compra.credito ? `${R(V)} × ${P(dasF)} × ${R(parcela * 100)}% = ${R(compra.credito)}` : '0,00',
       base: ent.usoPessoal ? BL.usoPessoal : BL.dasParcela,
       alerta: compra.credito ? 'O DAS do fornecedor é uma estimativa (Ajustes avançados). A partir de 2027, o valor real vem na nota dele.' : undefined,
     });
   } else {
-    if (ent.fornecedor === 'simples_hibrido') {
-      mem.reg('compra.preco', compra.precoForn, {
-        rotulo: 'Preço do fornecedor sem IBS/CBS',
-        formula: 'Fornecedor Simples Híbrido tira do preço a parcela de IBS/CBS do DAS (DAS estimado × 15,5%)',
-        subst: `${R(V)} × (1 − ${P(dasF)} × ${R(parcela * 100)}%) = ${R(compra.precoForn)}`,
-        base: `${BL.hibrido} · ${BL.repasse}`,
-        alerta: 'O DAS do fornecedor é uma estimativa (Ajustes avançados).',
-      });
-    } else {
-      mem.reg('compra.preco', compra.precoForn, {
-        rotulo: 'Preço do fornecedor sem IBS/CBS',
-        formula: icmsForn ? 'Preço = valor sem PIS/Cofins e sem ICMS ÷ (1 − ICMS do fornecedor no ano)' : 'Sem ICMS: preço = valor informado sem PIS/Cofins',
-        subst: icmsForn ? `${R(V)} × (1 − ${P(icmsForn)}) ÷ (1 − ${P(compra.icY)}) = ${R(compra.precoForn)}` : R(compra.precoForn),
-        base: BL.repasse,
-      });
-      if (icmsForn) {
-        mem.reg('compra.icms', compra.icmsV, {
-          rotulo: `ICMS na nota de compra ${taxas.ano}`,
-          formula: 'ICMS = preço do fornecedor × ICMS do fornecedor no ano (alíquota × fator do ano)',
-          subst: `${R(compra.precoForn)} × ${P(icmsForn)} × ${String(taxas.fator).replace('.', ',')} = ${R(compra.icmsV)}`,
-          base: `${BL.icms} · ${BL.icmsFator}`,
-        });
-        mem.reg('compra.creditoIcms', compra.creditoIcms, {
-          rotulo: `Crédito de ICMS ${taxas.ano}`,
-          formula: compra.creditoIcms ? 'ICMS destacado na nota de compra vira crédito' : 'Sem crédito: ' + semCredito('icms'),
-          subst: R(compra.creditoIcms),
-          base: BL.icmsCredito,
-        });
-      }
-    }
-    const baseTxt = R(compra.liquido);
-    mem.reg('compra.cbs', compra.cbsV, { rotulo: 'CBS na nota de compra', formula: 'CBS = base (preço sem ICMS) × CBS do ano', subst: `${baseTxt} × ${P(taxas.cbs)} = ${R(compra.cbsV)}`, base: BL.porFora });
-    mem.reg('compra.ibs', compra.ibsV, { rotulo: 'IBS na nota de compra', formula: 'IBS = base (preço sem ICMS) × IBS do ano', subst: `${baseTxt} × ${P(taxas.ibs)} = ${R(compra.ibsV)}`, base: BL.porFora });
-    mem.reg('compra.nota', compra.nota, {
-      rotulo: `Nota de compra ${taxas.ano}`,
-      formula: 'Nota = preço do fornecedor + CBS + IBS',
-      subst: `${R(compra.precoForn)} + ${R(compra.cbsV)} + ${R(compra.ibsV)} = ${R(compra.nota)}`,
+    mem.reg('compra.ibsCbs', compra.ibsCbsV, {
+      rotulo: `IBS/CBS destacado na nota (${taxas.ano})`,
+      formula: ibsRs ? 'Valor informado em R$' : ibsVazio ? 'IBS/CBS = nota × alíquota IBS + CBS do ano (campo vazio)' : 'IBS/CBS = nota × percentual informado',
+      subst: ibsRs ? R(compra.ibsCbsV) : `${R(V)} × ${P(ibsPct)} = ${R(compra.ibsCbsV)}`,
       base: BL.porFora,
     });
     mem.reg('compra.credito', compra.credito, {
-      rotulo: 'Crédito de IBS/CBS na compra',
-      formula: compra.credito ? 'Crédito = CBS + IBS destacados na nota de compra' : 'Sem crédito: ' + semCredito('ibs'),
-      subst: compra.credito ? `${R(compra.cbsV)} + ${R(compra.ibsV)} = ${R(compra.credito)}` : '0,00',
+      rotulo: 'Crédito de IBS/CBS',
+      formula: compra.credito ? 'Crédito integral do IBS/CBS destacado na nota' : 'Sem crédito: ' + semCredito('ibs'),
+      subst: R(compra.credito),
       base: ent.usoPessoal ? BL.usoPessoal : BL.credito,
     });
   }
   mem.reg('compra.custo', compra.custo, {
-    rotulo: `Custo real da mercadoria ${taxas.ano}`,
-    formula: 'Custo real = nota de compra − créditos (IBS/CBS e ICMS)',
-    subst: `${R(compra.nota)} − ${R(compra.credito)}${compra.creditoIcms ? ` − ${R(compra.creditoIcms)}` : ''} = ${R(compra.custo)}`,
+    rotulo: `Custo da mercadoria ${taxas.ano}`,
+    formula: 'Custo = nota − crédito de IBS/CBS − crédito de ICMS',
+    subst: `${R(V)} − ${R(compra.credito)} − ${R(compra.creditoIcms)} = ${R(compra.custo)}`,
     base: BL.credito,
   });
 }
@@ -789,7 +740,19 @@ function registrarCenario(mem, id, c, x) {
     base: BL.dre,
     alerta: difArred(c.lucroLiquido, [c.lair, -c.ir]),
   });
-  mem.reg(k('margemLiquida'), c.margemLiquida, { rotulo: `Margem líquida · ${cen}`, tipo: 'pct', formula: 'Margem líquida = lucro líquido ÷ receita líquida', subst: `${R(c.lucroLiquido)} ÷ ${R(c.receitaLiquida)} = ${P(c.margemLiquida)}`, base: BL.dre });
+  mem.reg(k('margemPreco'), c.margemPreco, {
+    rotulo: `Margem sobre o preço de venda · ${cen}`,
+    tipo: 'pct',
+    formula: 'Margem = lucro líquido ÷ preço de venda (receita bruta). É a margem que você embute no markup: de cada R$ 100 vendidos, quanto sobra depois de pagar tudo.',
+    subst: `${R(c.lucroLiquido)} ÷ ${R(c.receitaBruta)} = ${P(c.margemPreco)}`,
+  });
+  mem.reg(k('margemLiquida'), c.margemLiquida, {
+    rotulo: `Lucro líquido (Contábil) · ${cen}`,
+    tipo: 'pct',
+    formula: 'Indicador contábil: lucro líquido ÷ receita líquida. É maior que a margem sobre o preço porque a receita líquida já descontou os tributos sobre a venda.',
+    subst: `${R(c.lucroLiquido)} ÷ ${R(c.receitaLiquida)} = ${P(c.margemLiquida)}`,
+    base: BL.dre,
+  });
 
   // Cliente
   let cliF;

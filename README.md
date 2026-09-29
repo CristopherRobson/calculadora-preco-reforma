@@ -45,3 +45,11 @@ Para publicar, rode `npm run deploy`: ele roda os testes, gera o build e envia p
 - **Serviço:** usa ISS no lugar do ICMS, com a mesma redução da transição (ADCT, art. 128). A chave "IBS/CBS na base do ICMS" não se aplica ao ISS.
 - **2026:** ano de teste. CBS 0,9% e IBS 0,1% destacados só para informação; preço, nota e custo iguais aos de hoje.
 - **Custos/despesas:** fixos em % do custo, somados ao custo (100 + 10% = 110); variáveis em % do preço, no divisor (110 ÷ 0,9 = 122,22). Nos anos da Reforma, os fixos mantêm o valor em R$ de hoje (padrão) ou acompanham o custo do ano (opção nos ajustes avançados).
+
+## Terceira rodada de ajustes
+
+- **Compra = total da nota fiscal.** Custo = nota − créditos. Hoje e em 2026: Lucro Real credita 9,25% de PIS/Cofins, qualquer que seja o fornecedor; os demais regimes ficam com a nota (menos o ICMS, se creditam). A partir de 2027: crédito do IBS/CBS destacado na nota (em % ou R$; vazio = alíquota do ano sobre a nota) e do ICMS (em % ou R$). Em 2026 os campos de IBS/CBS não aparecem.
+- **Fornecedor do Simples Nacional:** crédito = nota × DAS estimado × 15,5%. **Simples Híbrido:** crédito integral do IBS/CBS destacado.
+- **Simples Híbrido (sua empresa):** o DAS informado já é a carga do híbrido, sem IBS/CBS. Para a coluna "Hoje", o DAS cheio é reconstruído: DAS ÷ (1 − 15,5%).
+- **Margens na DRE:** "Margem sobre o preço de venda" (lucro líquido ÷ receita bruta, igual à margem embutida no markup) e "Lucro líquido (Contábil)" (lucro líquido ÷ receita líquida).
+- **Estratégias na tela:** Repassar tudo e Manter a nota. "Manter lucro" segue calculada no motor, mas saiu da interface.

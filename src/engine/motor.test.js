@@ -7,9 +7,11 @@
 //   T3 Repassar ......... IBS/CBS 12,48 → 12,47 · nota 146,49 → 146,48
 //   T3 Manter lucro ..... IBS/CBS 12,94 → 12,95 · nota 151,98 → 151,99
 //
-// Convenção de entrada (decidida com o usuário): o valor da compra é informado SEM PIS/Cofins.
-// Por isso a nota de 100,00 de hoje de um fornecedor do Lucro Real entra como 90,75
-// (100 × (1 − 9,25%)) e a do Presumido como 96,35. Os resultados esperados não mudam.
+// Convenção de entrada (decidida com o usuário): o valor da compra é o TOTAL DA NOTA FISCAL.
+// Custo = nota − créditos. Hoje/2026: PIS/Cofins 9,25% (só Lucro Real) e ICMS. A partir de 2027:
+// IBS/CBS destacado na nota (crédito integral; fornecedor do Simples Nacional: DAS × 15,5%) e ICMS.
+// O T2 original (repasse do fornecedor) foi substituído por essas regras. No T3, o IBS/CBS da
+// nota de compra é informado em R$ 9,25 para reproduzir o custo de 90,75 da especificação.
 
 import { describe, it, expect } from 'vitest';
 import { formarPreco, custoDaCompra, compraHoje, simular, linhaDoTempo } from './motor.js';
@@ -52,49 +54,34 @@ describe('T1 · Markup genérico', () => {
   });
 });
 
-describe('T2 · Custo real por fornecedor (nota de hoje = 100, 2027, comprador que credita)', () => {
-  const base = { dasFornecedor: 0.08, parcela: 0.155, creditaIbs: true, cbs: 0.0921, ibs: 0.001 };
-  // [fornecedor, valor sem PIS/Cofins, esperado]
-  const casos = [
-    ['real', 90.75, { base: 90.75, nota: 99.2, credito: 8.45, custo: 90.75 }],
-    ['presumido', 96.35, { base: 96.35, nota: 105.32, credito: 8.97, custo: 96.35 }],
-    ['simples_hibrido', 100, { base: 98.76, nota: 107.96, credito: 9.2, custo: 98.76 }],
-    ['simples_unico', 100, { base: null, nota: 100, credito: 1.24, custo: 98.76 }],
-  ];
-  for (const [forn, V, esp] of casos) {
-    it(forn, () => {
-      const c = custoDaCompra({ ...base, V, fornecedor: forn });
-      expect(c.base).toBe(esp.base);
-      expect(c.nota).toBe(esp.nota);
-      expect(c.credito).toBe(esp.credito);
-      expect(c.custo).toBe(esp.custo);
-    });
-  }
-  it('uso e consumo pessoal (fornecedor LR): sem crédito, custo = nota', () => {
-    const c = custoDaCompra({ ...base, V: 90.75, fornecedor: 'real', creditaIbs: false });
-    expect(c.credito).toBe(0);
-    expect(c.custo).toBe(99.2);
+describe('T2 · Custo da compra (nota de 100,00)', () => {
+  it('hoje e 2026: Lucro Real credita 9,25% de PIS/Cofins, qualquer fornecedor; demais regimes, custo = nota', () => {
+    expect(compraHoje({ V: 100, creditaPis: true }).custo).toBe(90.75);
+    expect(compraHoje({ V: 100 }).custo).toBe(100);
   });
-  it('nota de hoje reconstruída a partir do valor sem PIS/Cofins', () => {
-    expect(compraHoje({ V: 90.75, fornecedor: 'real' }).nota).toBe(100);
-    expect(compraHoje({ V: 96.35, fornecedor: 'presumido' }).nota).toBe(100);
+  it('2027: quem credita desconta o IBS/CBS da nota (100 − 9,31% = 90,69)', () => {
+    expect(custoDaCompra({ V: 100, fornecedor: 'real', ibsCbsV: 9.31, creditaIbs: true }).custo).toBe(90.69);
   });
-  it('custo de hoje: Presumido = nota; Lucro Real = nota × (1 − 9,25%)', () => {
-    expect(compraHoje({ V: 90.75, fornecedor: 'real' }).custo).toBe(100);
-    expect(compraHoje({ V: 90.75, fornecedor: 'real', creditaPis: true }).custo).toBe(90.75);
+  it('2027: quem não credita fica com a nota inteira', () => {
+    expect(custoDaCompra({ V: 100, fornecedor: 'real', ibsCbsV: 9.31, creditaIbs: false }).custo).toBe(100);
   });
-  it('Simples Híbrido e Simples Nacional dão o mesmo custo (repasse integral)', () => {
-    const h = custoDaCompra({ ...base, V: 100, fornecedor: 'simples_hibrido' });
-    const u = custoDaCompra({ ...base, V: 100, fornecedor: 'simples_unico' });
-    expect(h.custo).toBe(u.custo);
-    expect(h.credito).toBeGreaterThan(u.credito);
-    expect(h.nota).toBeGreaterThan(u.nota);
+  it('fornecedor Simples Híbrido: crédito integral do IBS/CBS destacado', () => {
+    expect(custoDaCompra({ V: 100, fornecedor: 'simples_hibrido', ibsCbsV: 9.31, creditaIbs: true }).credito).toBe(9.31);
+  });
+  it('fornecedor Simples Nacional: crédito = nota × DAS × 15,5% (1,24)', () => {
+    const c = custoDaCompra({ V: 100, fornecedor: 'simples_unico', dasFornecedor: 0.08, parcela: 0.155, ibsCbsV: 9.31, creditaIbs: true });
+    expect(c.credito).toBe(1.24);
+    expect(c.custo).toBe(98.76);
+  });
+  it('ICMS destacado também sai do custo de quem credita', () => {
+    expect(custoDaCompra({ V: 100, fornecedor: 'real', ibsCbsV: 9.31, icmsV: 12, creditaIbs: true, creditaIcms: true }).custo).toBe(78.69);
+    expect(compraHoje({ V: 100, icmsV: 12, creditaPis: true, creditaIcms: true }).custo).toBe(78.75);
   });
 });
 
 describe('T3 · Presumido comprando do Lucro Real (sem ICMS, 2027)', () => {
   const p = { ...P0, icmsProduto: 0 };
-  const ent = { ano: 2027, regime: 'presumido', atividade: 'comercio', valorCompra: 90.75, fornecedor: 'real', despesasVar: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
+  const ent = { ano: 2027, regime: 'presumido', atividade: 'comercio', valorCompra: 100, fornecedor: 'real', ibsCbsModo: 'rs', ibsCbsCompra: 9.25, despesasVar: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
   const s = simular(ent, p);
   const esperado = {
     hoje: { nota: 156.08, ibsCbs: 0, receitaBruta: 156.08, pis: 5.7, receitaLiquida: 150.38, custo: 100, lucroBruto: 50.38, despesas: 15.61, lair: 34.77, ir: 3.56, lucroLiquido: 31.22, margem: 0.2076 },
@@ -119,7 +106,11 @@ describe('T3 · Presumido comprando do Lucro Real (sem ICMS, 2027)', () => {
       expect(Number(c.margemLiquida.toFixed(4))).toBe(e.margem);
     });
   }
-  it('margens com 1 casa como na especificação (20,8% · 20,0% · 22,5% · 24,2%)', () => {
+  it('margem sobre o preço de venda = margem embutida (hoje e repassar)', () => {
+    expect(s.hoje.margemPreco).toBeCloseTo(0.2, 10);
+    expect(s.repassar.margemPreco).toBeCloseTo(0.2, 10);
+  });
+  it('Lucro líquido (Contábil) com 1 casa, como na especificação (20,8% · 20,0% · 22,5% · 24,2%)', () => {
     expect([s.hoje, s.repassar, s.lucro, s.nota].map((c) => (c.margemLiquida * 100).toFixed(1))).toEqual(['20.8', '20.0', '22.5', '24.2']);
   });
   it('multiplicadores', () => {
@@ -239,25 +230,39 @@ describe('ajustes da segunda rodada', () => {
     expect(s.hoje.preco).toBeCloseTo((s.custoHoje * 1.1) / s.hoje.divisor, 10);
   });
 
-  it('ICMS do fornecedor: crédito reduz o custo e o custo real fica estável na transição', () => {
-    const arg = { V: 100, fornecedor: 'real', icmsFornecedor: 0.12, creditaIbs: true, creditaIcms: true, cbs: 0.0921, ibs: 0.001 };
-    const h = compraHoje({ V: 100, fornecedor: 'real', icmsFornecedor: 0.12, creditaIcms: true });
-    expect(h.nota).toBe(110.19);
-    expect(h.icmsV).toBe(13.22);
-    expect(h.custo).toBe(96.97);
-    const c27 = custoDaCompra({ ...arg, fator: 1 });
-    expect(c27.icmsV).toBe(12);
-    expect(c27.nota).toBe(108.19);
-    expect(c27.custo).toBe(88);
-    const c30 = custoDaCompra({ ...arg, fator: 0.8 });
-    expect(c30.icmsV).toBe(9.35);
-    expect(c30.custo).toBe(88);
+  it('campo IBS/CBS vazio usa a alíquota do ano sobre a nota; % e R$ informados', () => {
+    const p = { ...P0, icmsProduto: 0 };
+    expect(simular(base, p).custoAno).toBe(90.69);
+    expect(simular({ ...base, ibsCbsCompra: 5 }, p).custoAno).toBe(95);
+    expect(simular({ ...base, ibsCbsModo: 'rs', ibsCbsCompra: 7.5 }, p).custoAno).toBe(92.5);
   });
-  it('quem não credita ICMS (serviço) fica com o ICMS do fornecedor no custo', () => {
-    const c = custoDaCompra({ V: 100, fornecedor: 'real', icmsFornecedor: 0.12, fator: 1, creditaIbs: true, creditaIcms: false, cbs: 0.0921, ibs: 0.001 });
-    expect(c.custo).toBe(100);
+  it('2026: Lucro Real = nota − 9,25%; demais regimes = nota', () => {
+    const p = { ...P0, icmsProduto: 0 };
+    expect(simular({ ...base, ano: 2026, regime: 'real' }, p).custoAno).toBe(90.75);
+    expect(simular({ ...base, ano: 2026, regime: 'presumido' }, p).custoAno).toBe(100);
+    expect(simular({ ...base, ano: 2026, regime: 'presumido', fornecedor: 'simples_unico' }, p).custoAno).toBe(100);
   });
-
+  it('ICMS em %: alíquota cheia reduzida pelo fator do ano; serviço não credita', () => {
+    const p = { ...P0, icmsProduto: 0 };
+    const s30 = simular({ ...base, ano: 2030, icmsFornecedor: 12 }, p);
+    expect(s30.compra.icmsV).toBe(9.6);
+    const serv = simular({ ...base, atividade: 'servico', icmsFornecedor: 12 }, p);
+    expect(serv.compra.creditoIcms).toBe(0);
+  });
+  it('Simples Híbrido: DAS informado já é sem IBS/CBS; hoje usa o DAS cheio', () => {
+    const s = simular({ ...base, regime: 'simples_hibrido', das: 6.76 }, P0);
+    expect(s.ctxAno.itens[0].aliq).toBeCloseTo(0.0676, 10);
+    expect(s.ctxHoje.itens[0].aliq).toBeCloseTo(0.0676 / 0.845, 10);
+    expect(s.hoje.margemPreco).toBeCloseTo(0.2, 10);
+    expect(s.repassar.margemPreco).toBeCloseTo(0.2, 10);
+  });
+  it('margem sobre o preço = margem embutida em todos os regimes', () => {
+    for (const regime of ['presumido', 'real', 'simples_unico', 'simples_hibrido']) {
+      const s = simular({ ...base, regime, despesasFixas: 5 }, P0);
+      expect(s.hoje.margemPreco, regime).toBeCloseTo(0.2, 10);
+      expect(s.repassar.margemPreco, regime).toBeCloseTo(0.2, 10);
+    }
+  });
   it('serviço usa ISS no lugar do ICMS, com a mesma redução (ADCT, art. 128)', () => {
     const s = simular({ ...base, atividade: 'servico', ano: 2029 }, P0);
     expect(s.taxas.nomeLocal).toBe('ISS');

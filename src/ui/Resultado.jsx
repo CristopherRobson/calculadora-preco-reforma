@@ -97,11 +97,10 @@ export function Destaque({ s, est }) {
 export function SeletorEstrategia({ est, setEst }) {
   return (
     <div className="estrategias" role="tablist" aria-label="Estratégia de preço">
-      {ESTRATEGIAS.map((e) => (
+      {ESTRATEGIAS.filter((e) => e.id !== 'lucro').map((e) => (
         <button key={e.id} type="button" role="tab" aria-selected={est === e.id} className={`estrategia ${est === e.id ? 'estrategia--ativa' : ''}`} onClick={() => setEst(e.id)}>
           <span className="estrategia__nome">
             {e.nome}
-            {e.id === 'lucro' && <span className="selo">Recomendado</span>}
           </span>
           <span className="estrategia__resumo">{e.resumo}</span>
         </button>
@@ -146,10 +145,10 @@ export function Cartoes({ est }) {
         </span>
       </div>
       <div className="cartao">
-        <span className="eyebrow">Margem líquida</span>
-        <Num id={`${est}.margemLiquida`} className="cartao__valor" />
+        <span className="eyebrow">Margem sobre o preço</span>
+        <Num id={`${est}.margemPreco`} className="cartao__valor" />
         <span className="cartao__sub">
-          Hoje <Num id="hoje.margemLiquida" />
+          Hoje <Num id="hoje.margemPreco" />
         </span>
       </div>
     </div>
@@ -176,11 +175,12 @@ const LINHAS_DRE = [
   { k: 'lair', nome: '= Lucro antes do IR/CSLL', tipo: 'sub' },
   { k: 'ir', nome: '(−) IRPJ/CSLL' },
   { k: 'lucroLiquido', nome: '= Lucro líquido', tipo: 'total' },
-  { k: 'margemLiquida', nome: 'Margem líquida', tipo: 'pct' },
+  { k: 'margemPreco', nome: 'Margem sobre o preço de venda', tipo: 'margem' },
+  { k: 'margemLiquida', nome: 'Lucro líquido (Contábil)', tipo: 'pct' },
 ];
 
 export function TabelaDRE({ s, est, setEst }) {
-  const cols = ['hoje', 'lucro', 'repassar', 'nota'];
+  const cols = ['hoje', 'repassar', 'nota'];
   const mem = s.memoria;
   const linhas = LINHAS_DRE.filter(
     (l) => (!l.opcional || cols.some((c) => mem[`${c}.${l.k}`])) && (!l.seNaoZero || cols.some((c) => Math.abs(mem[`${c}.${l.k}`]?.valor || 0) > 0.0001)),
@@ -218,7 +218,10 @@ export function TabelaDRE({ s, est, setEst }) {
           ))}
         </tbody>
       </table>
-      <p className="legenda">Base: Lei 6.404/1976, art. 187. O IBS/CBS destacado não é receita (DL 1.598/1977, art. 12, §4º). Clique em qualquer número para ver a conta.</p>
+      <p className="legenda">
+        A margem sobre o preço de venda é a que você embute no markup. O Lucro líquido (Contábil) divide o mesmo lucro pela receita líquida, por isso é maior. Base: Lei 6.404/1976, art. 187; o
+        IBS/CBS destacado não é receita (DL 1.598/1977, art. 12, §4º). Clique em qualquer número para ver a conta.
+      </p>
     </div>
   );
 }
@@ -247,7 +250,7 @@ export function VisaoCliente({ s, est }) {
             )}
           </span>
         </div>
-        {['lucro', 'repassar', 'nota'].map((c) => (
+        {['repassar', 'nota'].map((c) => (
           <div key={c} className={`cliente__cartao ${c === est ? 'cliente__cartao--ativo' : ''}`}>
             <span className="eyebrow">
               {NOME[c]} · {s.ano}
@@ -303,42 +306,35 @@ function TabelaCompra({ titulo, linhas, m }) {
   );
 }
 
-export function CustoCompra({ s, fornecedor }) {
+export function CustoCompra({ s }) {
   const m = s.memoria;
-  const simples = fornecedor === 'simples_unico' || fornecedor === 'simples_hibrido';
   const hoje = [
-    ['compra.V', simples ? 'Valor da nota informado' : 'Valor sem PIS/Cofins informado'],
-    ['compra.hojeNota', '= Nota de compra hoje'],
-    ['compra.hojeIcms', 'ICMS na nota (por dentro)'],
+    ['compra.V', 'Nota fiscal de compra'],
+    ['compra.hojeIcms', 'ICMS destacado'],
     ['compra.hojeCreditoPis', '(−) Crédito de PIS/Cofins'],
     ['compra.hojeCreditoIcms', '(−) Crédito de ICMS'],
     ['compra.hoje', '= Custo hoje'],
   ];
-  const ano = [
-    ['compra.preco', 'Preço do fornecedor sem IBS/CBS'],
-    ['compra.icms', 'ICMS na nota (por dentro)'],
-    ['compra.cbs', '(+) CBS'],
-    ['compra.ibs', '(+) IBS'],
-    ['compra.nota', `= Nota de compra ${s.ano}`],
-    ['compra.creditoIcms', '(−) Crédito de ICMS'],
-    ['compra.credito', '(−) Crédito de IBS/CBS'],
-    ['compra.custo', `= Custo real ${s.ano}`],
-  ];
+  const ano = s.teste
+    ? [['compra.custo', '= Custo 2026']]
+    : [
+        ['compra.V', 'Nota fiscal de compra'],
+        ['compra.ibsCbs', 'IBS/CBS destacado'],
+        ['compra.icms', 'ICMS destacado'],
+        ['compra.credito', '(−) Crédito de IBS/CBS'],
+        ['compra.creditoIcms', '(−) Crédito de ICMS'],
+        ['compra.custo', `= Custo ${s.ano}`],
+      ];
   return (
     <div>
       <p className="aba__intro">
-        Premissa de mercado: o fornecedor mantém o preço líquido de tributos e soma o IBS/CBS por fora. O ICMS cai ano a ano e ele repassa. O custo real é a nota menos os créditos.
+        Custo da mercadoria = nota de compra − créditos. Hoje e em 2026: crédito de PIS/Cofins (só Lucro Real) e de ICMS. A partir de 2027: crédito do IBS/CBS destacado na nota e do ICMS. Quem não
+        toma crédito fica com a nota inteira no custo.
       </p>
       <div className="compra__grade">
         <TabelaCompra titulo="Hoje" linhas={hoje} m={m} />
         <TabelaCompra titulo={String(s.ano)} linhas={ano} m={m} />
       </div>
-      {simples && (
-        <p className="nota-explicativa">
-          <strong>Simples Nacional ou Simples Híbrido dão o mesmo custo.</strong> O fornecedor Híbrido tira do preço só a parcela de IBS/CBS do DAS dele e soma o IBS/CBS cheio por fora. Você credita
-          mais, mas a nota sobe na mesma medida. A vantagem do Híbrido fica com o fornecedor, que passa a creditar o IBS/CBS das compras dele. Ela só chega até você se ele baixar o preço.
-        </p>
-      )}
     </div>
   );
 }
@@ -432,13 +428,12 @@ const GRUPOS = [
   { id: 'ano', nome: 'Alíquotas do ano' },
   { id: 'compra', nome: 'Compra' },
   { id: 'hoje', nome: 'Hoje' },
-  { id: 'lucro', nome: 'Manter lucro' },
   { id: 'repassar', nome: 'Repassar tudo' },
   { id: 'nota', nome: 'Manter a nota' },
 ];
 
 export function MemoriaCompleta({ s, todos = false }) {
-  const [grupo, setGrupo] = useState('lucro');
+  const [grupo, setGrupo] = useState('repassar');
   const itens = Object.values(s.memoria);
   const alertas = itens.filter((i) => i.alerta);
   const visiveis = todos ? GRUPOS : GRUPOS.filter((g) => g.id === grupo);

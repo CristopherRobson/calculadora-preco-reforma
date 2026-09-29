@@ -43,7 +43,7 @@ export default function App() {
   const inicial = useMemo(lerSalvo, []);
   const [ent, setEnt] = useState(inicial.ent);
   const [p, setP] = useState(inicial.p);
-  const [est, setEst] = useState('lucro');
+  const [est, setEst] = useState('repassar');
   const [aba, setAba] = useState('dre');
   const [memo, setMemo] = useState(null);
   const [premAberta, setPremAberta] = useState(false);
@@ -126,7 +126,7 @@ export default function App() {
                 <section className="painel no-print">
                   {aba === 'dre' && <TabelaDRE s={s} est={est} setEst={setEst} />}
                   {aba === 'cliente' && <VisaoCliente s={s} est={est} />}
-                  {aba === 'compra' && <CustoCompra s={s} fornecedor={ent.fornecedor} />}
+                  {aba === 'compra' && <CustoCompra s={s} />}
                   {aba === 'tempo' && <LinhaDoTempo linhas={linhas} est={est} anoAtual={ent.ano} setAno={(a) => set('ano', a)} />}
                   {aba === 'memoria' && <MemoriaCompleta s={s} />}
                 </section>
@@ -162,9 +162,12 @@ function Relatorio({ s, ent, p, est }) {
       : ent.atividade === 'servico'
         ? ['ISS do serviço', `${R(p.issServico)}%`]
         : ['ICMS do produto', `${R(p.icmsProduto)}%`],
-    [ent.fornecedor.startsWith('simples') ? 'Valor da nota de compra' : 'Valor da compra sem PIS/Cofins', `R$ ${R(ent.valorCompra)}`],
+    ['Valor da nota fiscal de compra', `R$ ${R(ent.valorCompra)}`],
     ['Fornecedor', FORNECEDORES[ent.fornecedor] + (ent.usoPessoal ? ' · uso e consumo pessoal' : '')],
-    ...(ent.fornecedor.startsWith('simples') ? [] : [['ICMS na nota do fornecedor', `${R(ent.icmsFornecedor || 0)}%`]]),
+    ...(ent.fornecedor.startsWith('simples') ? [] : [['ICMS na nota', ent.icmsModo === 'rs' ? `R$ ${R(ent.icmsFornecedor || 0)}` : `${R(ent.icmsFornecedor || 0)}%`]]),
+    ...(ent.fornecedor === 'simples_unico' || s.teste
+      ? []
+      : [['IBS/CBS na nota', ent.ibsCbsCompra === '' || ent.ibsCbsCompra == null ? `${P(s.taxas.a)} (alíquota do ano)` : ent.ibsCbsModo === 'rs' ? `R$ ${R(ent.ibsCbsCompra)}` : `${R(ent.ibsCbsCompra)}%`]]),
     ent.modo === 'preco' ? ['Preço de venda hoje', `R$ ${R(ent.precoHoje)}`] : ['Margem', `${R(ent.margem)}%${ent.regime === 'real' ? ' (depois do IR)' : ''}`],
     ['Custos/despesas fixos', `${R(ent.despesasFixas || 0)}% do custo`],
     ['Custos/despesas variáveis', `${R(ent.despesasVar || 0)}% do preço`],

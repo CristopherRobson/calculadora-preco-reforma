@@ -1,5 +1,7 @@
-import { CampoNumero, Opcoes, Selecao, Chave } from './componentes.jsx';
+import { CampoNumero, CampoUnidade, Opcoes, Selecao, Chave } from './componentes.jsx';
 import { CLIENTES, FORNECEDORES, creditosDoComprador } from '../engine/motor.js';
+import { taxasDoAno } from '../engine/premissas.js';
+import { P } from '../engine/numeros.js';
 
 const ehSimples = (r) => r === 'simples_unico' || r === 'simples_hibrido';
 
@@ -19,6 +21,10 @@ export default function Formulario({ ent, set, premissas, setPremissa }) {
   const regular = !ehSimples(ent.regime);
   const servico = regular && ent.atividade === 'servico';
   const cred = creditosDoComprador({ ...ent, atividade: regular ? ent.atividade : 'comercio' });
+  const taxas = taxasDoAno(premissas, Number(ent.ano), regular ? ent.atividade : 'comercio');
+  const fornSimples = ehSimples(ent.fornecedor);
+  const dasF = premissas.dasFornecedor / 100;
+  const parcela = premissas.parcelaIbsCbsNoDas / 100;
 
   return (
     <form className="formulario" onSubmit={(e) => e.preventDefault()}>
@@ -48,7 +54,18 @@ export default function Formulario({ ent, set, premissas, setPremissa }) {
           />
         )}
         {!regular ? (
-          <CampoNumero id="das" rotulo="Alíquota efetiva do DAS" sufixo="%" valor={ent.das} onChange={(v) => set('das', v)} dica="Está no extrato do PGDAS-D. ICMS e ISS já vêm dentro do DAS." />
+          <CampoNumero
+            id="das"
+            rotulo={ent.regime === 'simples_hibrido' ? 'Alíquota efetiva do DAS (já sem IBS/CBS)' : 'Alíquota efetiva do DAS'}
+            sufixo="%"
+            valor={ent.das}
+            onChange={(v) => set('das', v)}
+            dica={
+              ent.regime === 'simples_hibrido'
+                ? 'A carga do DAS no híbrido, já sem a parcela de IBS/CBS. ICMS e ISS vêm dentro do DAS.'
+                : 'Está no extrato do PGDAS-D. ICMS e ISS já vêm dentro do DAS.'
+            }
+          />
         ) : servico ? (
           <CampoNumero id="iss" rotulo="ISS do serviço" sufixo="%" valor={premissas.issServico} onChange={(v) => setPremissa('issServico', v)} dica="Alíquota do município (de 2% a 5%)." />
         ) : (
@@ -65,20 +82,60 @@ export default function Formulario({ ent, set, premissas, setPremissa }) {
           opcoes={Object.entries(FORNECEDORES).map(([valor, nome]) => ({ valor, nome }))}
           dica="Na dúvida, Lucro Real (maioria das indústrias e distribuidoras)."
         />
-        {ehSimples(ent.fornecedor) ? (
-          <CampoNumero id="compra" rotulo="Valor da nota de compra" prefixo="R$" valor={ent.valorCompra} onChange={(v) => set('valorCompra', v)} dica="Por unidade. Fornecedor do Simples: use o valor total da nota." />
-        ) : (
-          <>
-            <CampoNumero id="compra" rotulo="Valor da compra sem PIS/Cofins" prefixo="R$" valor={ent.valorCompra} onChange={(v) => set('valorCompra', v)} dica="Por unidade. É o preço do fornecedor a partir de 2027, quando o PIS/Cofins deixa de existir." />
-            <CampoNumero
-              id="icmsforn"
-              rotulo="ICMS destacado na nota do fornecedor"
-              sufixo="%"
-              valor={ent.icmsFornecedor}
-              onChange={(v) => set('icmsFornecedor', v)}
-              dica={cred.icms ? 'Vira crédito e sai do seu custo. Use 0 se a nota não tem ICMS.' : 'Sua empresa não credita ICMS (serviço ou Simples): ele fica no custo.'}
+        <CampoNumero id="compra" rotulo="Valor da nota fiscal de compra" prefixo="R$" valor={ent.valorCompra} onChange={(v) => set('valorCompra', v)} dica="Valor total da nota, por unidade." />
+        {!fornSimples && (
+          <CampoUnidade
+            id="icmsforn"
+            rotulo="ICMS destacado na nota"
+            unidade={ent.icmsModo}
+            onUnidade={(v) => set('icmsModo', v)}
+            valor={ent.icmsFornecedor}
+            onChange={(v) => set('icmsFornecedor', v)}
+            dica={
+              cred.icms
+                ? ent.icmsModo === 'pct'
+                  ? 'Alíquota cheia; nos anos da transição a calculadora aplica a redução. Vira crédito e sai do custo.'
+                  : 'Vira crédito e sai do custo.'
+                : 'Sua empresa não credita ICMS (serviço ou Simples): ele fica no custo.'
+            }
+          />
+        )}
+        {!taxas.teste && !fornSimples ? (
+          ent.fornecedor === 'simples_unico' ? null : (
+            <CampoUnidade
+              id="ibscbsforn"
+              rotulo="IBS e CBS destacados na nota"
+              unidade={ent.ibsCbsModo}
+              onUnidade={(v) => set('ibsCbsModo', v)}
+              valor={ent.ibsCbsCompra}
+              onChange={(v) => set('ibsCbsCompra', v)}
+              placeholder={ent.ibsCbsModo === 'pct' ? P(taxas.a).replace('%', '') : ''}
+              dica={
+                cred.ibs
+                  ? `Crédito integral: sai do custo. Vazio = alíquota de ${taxas.ano} (${P(taxas.a)}) sobre a nota.`
+                  : 'Sua empresa não toma crédito de IBS/CBS: ele fica no custo.'
+              }
             />
-          </>
+          )
+        ) : null}
+        {!taxas.teste && ent.fornecedor === 'simples_hibrido' && (
+          <CampoUnidade
+            id="ibscbsforn"
+            rotulo="IBS e CBS destacados na nota"
+            unidade={ent.ibsCbsModo}
+            onUnidade={(v) => set('ibsCbsModo', v)}
+            valor={ent.ibsCbsCompra}
+            onChange={(v) => set('ibsCbsCompra', v)}
+            placeholder={ent.ibsCbsModo === 'pct' ? P(taxas.a).replace('%', '') : ''}
+            dica={cred.ibs ? `Híbrido: crédito integral do IBS/CBS destacado. Vazio = alíquota de ${taxas.ano} (${P(taxas.a)}) sobre a nota.` : 'Sua empresa não toma crédito de IBS/CBS.'}
+          />
+        )}
+        {!taxas.teste && ent.fornecedor === 'simples_unico' && (
+          <p className="campo__info">
+            {cred.ibs
+              ? `Fornecedor do Simples Nacional: crédito de ${P(dasF * parcela)} da nota (DAS estimado de ${P(dasF)} × ${P(parcela)}). Ajuste o DAS em Ajustes avançados.`
+              : 'Sua empresa não toma crédito de IBS/CBS.'}
+          </p>
         )}
         <Chave rotulo="É compra para uso e consumo pessoal" valor={ent.usoPessoal} onChange={(v) => set('usoPessoal', v)} dica="Nesse caso não há crédito de nenhum tributo." />
       </Passo>

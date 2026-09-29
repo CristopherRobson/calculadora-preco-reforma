@@ -128,6 +128,29 @@ export function CampoNumero({ rotulo, valor, onChange, sufixo, prefixo, dica, pl
   );
 }
 
+/** Campo numérico com escolha de unidade (% ou R$). */
+export function CampoUnidade({ rotulo, valor, onChange, unidade, onUnidade, dica, placeholder, id }) {
+  return (
+    <div className="campo">
+      <span className="campo__rotulo campo__rotulo--com-unidade">
+        <label htmlFor={id}>{rotulo}</label>
+        <span className="unidade" role="radiogroup" aria-label={`Unidade de ${rotulo}`}>
+          {[
+            ['pct', '%'],
+            ['rs', 'R$'],
+          ].map(([v, n]) => (
+            <button key={v} type="button" role="radio" aria-checked={unidade === v} className={`unidade__op ${unidade === v ? 'unidade__op--ativa' : ''}`} onClick={() => onUnidade(v)}>
+              {n}
+            </button>
+          ))}
+        </span>
+      </span>
+      <CampoNumero id={id} valor={valor} onChange={onChange} prefixo={unidade === 'rs' ? 'R$' : undefined} sufixo={unidade === 'pct' ? '%' : undefined} placeholder={placeholder} />
+      {dica && <span className="campo__dica">{dica}</span>}
+    </div>
+  );
+}
+
 export function Opcoes({ rotulo, valor, onChange, opcoes, dica, colunas }) {
   return (
     <div className="campo">
