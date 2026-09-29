@@ -1,4 +1,4 @@
-import { CampoNumero, Chave } from './componentes.jsx';
+import { CampoNumero, Chave, Opcoes } from './componentes.jsx';
 import { ANOS, BASE_LEGAL, taxasDoAno } from '../engine/premissas.js';
 import { P } from '../engine/numeros.js';
 
@@ -31,8 +31,11 @@ export default function Premissas({ p, setP, restaurar }) {
 
       <Grupo titulo="Alíquotas-base" base={`${BASE_LEGAL.cbs} · ${BASE_LEGAL.icms}`}>
         <div className="premissas__linha">
-          <CampoNumero rotulo="CBS" sufixo="%" valor={p.cbs} onChange={(v) => set('cbs', v)} compacto />
+          <CampoNumero rotulo="CBS (2027 em diante)" sufixo="%" valor={p.cbs} onChange={(v) => set('cbs', v)} compacto />
+          <CampoNumero rotulo="CBS em 2026 (teste)" sufixo="%" valor={p.cbsTeste} onChange={(v) => set('cbsTeste', v)} compacto />
+          <span />
           <CampoNumero rotulo="ICMS do produto" sufixo="%" valor={p.icmsProduto} onChange={(v) => set('icmsProduto', v)} compacto />
+          <CampoNumero rotulo="ISS do serviço" sufixo="%" valor={p.issServico} onChange={(v) => set('issServico', v)} compacto />
         </div>
         <Chave
           rotulo="IBS/CBS na base do ICMS"
@@ -47,7 +50,7 @@ export default function Premissas({ p, setP, restaurar }) {
           <thead>
             <tr>
               <th scope="col">Ano</th>
-              <th scope="col">Fator ICMS</th>
+              <th scope="col">Fator ICMS/ISS</th>
               <th scope="col">ICMS do ano</th>
               <th scope="col">IBS</th>
               <th scope="col">Origem do IBS</th>
@@ -58,7 +61,7 @@ export default function Premissas({ p, setP, restaurar }) {
               const vazio = p.ibsAno[ano] === null || p.ibsAno[ano] === '';
               const t = taxasDoAno(p, ano);
               const padrao = taxasDoAno({ ...p, ibsAno: { ...p.ibsAno, [ano]: null } }, ano);
-              const origem = !vazio ? 'Informado' : padrao.ibsAuto ? 'Repõe ICMS' : ano >= 2033 ? 'Referência' : 'Padrão';
+              const origem = !vazio ? 'Informado' : ano <= 2026 ? 'Teste' : padrao.ibsAuto ? 'Repõe ICMS/ISS' : ano >= 2033 ? 'Referência' : 'Padrão';
               return (
                 <tr key={ano}>
                   <th scope="row">{ano}</th>
@@ -81,7 +84,7 @@ export default function Premissas({ p, setP, restaurar }) {
             })}
           </tbody>
         </table>
-        <p className="premissas__nota">Campo do IBS vazio = valor padrão, em cinza. Digite um valor para sobrescrever. De 2029 a 2032, o padrão é a hipótese de que o IBS repõe o ICMS que saiu. Em 2033, a reposição é da arrecadação total, não produto a produto.</p>
+        <p className="premissas__nota">Campo do IBS vazio = valor padrão, em cinza. Digite um valor para sobrescrever. Em 2026, CBS e IBS são só destacados, sem cobrança. De 2029 a 2032, o padrão é a hipótese de que o IBS repõe o ICMS/ISS que saiu; o ISS cai com o mesmo fator do ICMS. Em 2033, a reposição é da arrecadação total, não produto a produto.</p>
       </Grupo>
 
       <Grupo titulo="Tributos atuais" base={`${BASE_LEGAL.pisCum} · ${BASE_LEGAL.presumido}`}>
@@ -132,7 +135,23 @@ export default function Premissas({ p, setP, restaurar }) {
       <Grupo titulo="Simples Nacional" base={`${BASE_LEGAL.simples} · ${BASE_LEGAL.dasParcela}`}>
         <div className="premissas__linha">
           <CampoNumero rotulo="Parcela de IBS/CBS no DAS" sufixo="%" valor={p.parcelaIbsCbsNoDas} onChange={(v) => set('parcelaIbsCbsNoDas', v)} compacto />
+          <CampoNumero rotulo="DAS estimado do fornecedor" sufixo="%" valor={p.dasFornecedor} onChange={(v) => set('dasFornecedor', v)} compacto />
         </div>
+        <p className="premissas__nota">
+          Quem compra de fornecedor do Simples não sabe o DAS dele. Por isso usamos uma estimativa. O impacto é pequeno: cada ponto de DAS muda o custo em cerca de 0,16%. A partir de 2027, o valor real vem destacado na nota do fornecedor.
+        </p>
+      </Grupo>
+
+      <Grupo titulo="Custos/despesas fixos nos anos da Reforma">
+        <Opcoes
+          valor={p.fixosModo}
+          onChange={(v) => set('fixosModo', v)}
+          colunas={2}
+          opcoes={[
+            { valor: 'rs', nome: 'Manter o valor em R$ de hoje', sub: 'Aluguel e folha não mudam com a Reforma' },
+            { valor: 'pct', nome: '% sobre o custo do ano', sub: 'Acompanha o custo da mercadoria' },
+          ]}
+        />
       </Grupo>
 
       <p className="premissas__nota">

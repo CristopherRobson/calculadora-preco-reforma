@@ -15,10 +15,13 @@ function lerSalvo() {
     if (s && s.ent && s.p) {
       const ent = { ...ENTRADAS_PADRAO, ...s.ent };
       if (!CLIENTES[ent.cliente]) ent.cliente = { real: 'regular', presumido_hibrido: 'regular', simples_unico: 'simples' }[ent.cliente] || 'consumidor';
+      // versões anteriores: despesas em um campo só (vira "variáveis")
+      if (s.ent.despesasVar === undefined && s.ent.despesas !== undefined) ent.despesasVar = s.ent.despesas;
       const p = { ...PREMISSAS_PADRAO, ...s.p };
       // versões anteriores gravavam os padrões do IBS como números; volta a tratá-los como padrão
       const antigo = { 2027: 0.1, 2028: 0.1, 2033: 18.7 };
-      p.ibsAno = { ...p.ibsAno };
+      p.ibsAno = { ...PREMISSAS_PADRAO.ibsAno, ...p.ibsAno };
+      p.fatorIcms = { ...PREMISSAS_PADRAO.fatorIcms, ...p.fatorIcms };
       for (const [ano, v] of Object.entries(antigo)) if (p.ibsAno[ano] === v) p.ibsAno[ano] = null;
       return { ent, p };
     }
@@ -123,7 +126,7 @@ export default function App() {
                 <section className="painel no-print">
                   {aba === 'dre' && <TabelaDRE s={s} est={est} setEst={setEst} />}
                   {aba === 'cliente' && <VisaoCliente s={s} est={est} />}
-                  {aba === 'compra' && <CustoCompra s={s} />}
+                  {aba === 'compra' && <CustoCompra s={s} fornecedor={ent.fornecedor} />}
                   {aba === 'tempo' && <LinhaDoTempo linhas={linhas} est={est} anoAtual={ent.ano} setAno={(a) => set('ano', a)} />}
                   {aba === 'memoria' && <MemoriaCompleta s={s} />}
                 </section>
@@ -153,18 +156,24 @@ export default function App() {
 function Relatorio({ s, ent, p, est }) {
   const linhas = [
     ['Ano', ent.ano],
-    ['Regime', REGIMES[ent.regime] + (ent.regime === 'presumido' ? ` (${ent.atividade === 'servico' ? 'serviço' : 'comércio'})` : '')],
-    ent.regime.startsWith('simples') ? ['DAS', `${R(ent.das)}%`] : ['ICMS do produto', `${R(p.icmsProduto)}%`],
-    ['Nota de compra hoje', `R$ ${R(ent.valorCompra)}`],
+    ['Regime', REGIMES[ent.regime] + (!ent.regime.startsWith('simples') ? ` (${ent.atividade === 'servico' ? 'serviço' : 'comércio'})` : '')],
+    ent.regime.startsWith('simples')
+      ? ['DAS', `${R(ent.das)}%`]
+      : ent.atividade === 'servico'
+        ? ['ISS do serviço', `${R(p.issServico)}%`]
+        : ['ICMS do produto', `${R(p.icmsProduto)}%`],
+    [ent.fornecedor.startsWith('simples') ? 'Valor da nota de compra' : 'Valor da compra sem PIS/Cofins', `R$ ${R(ent.valorCompra)}`],
     ['Fornecedor', FORNECEDORES[ent.fornecedor] + (ent.usoPessoal ? ' · uso e consumo pessoal' : '')],
+    ...(ent.fornecedor.startsWith('simples') ? [] : [['ICMS na nota do fornecedor', `${R(ent.icmsFornecedor || 0)}%`]]),
     ent.modo === 'preco' ? ['Preço de venda hoje', `R$ ${R(ent.precoHoje)}`] : ['Margem', `${R(ent.margem)}%${ent.regime === 'real' ? ' (depois do IR)' : ''}`],
-    ['Despesas', `${R(ent.despesas)}%`],
+    ['Custos/despesas fixos', `${R(ent.despesasFixas || 0)}% do custo`],
+    ['Custos/despesas variáveis', `${R(ent.despesasVar || 0)}% do preço`],
     ['Cliente', CLIENTES[ent.cliente]?.nome],
   ];
   const prem = [
     ['CBS', P(s.taxas.cbs)],
     [`IBS ${s.ano}`, P(s.taxas.ibs)],
-    [`ICMS ${s.ano}`, P(s.taxas.ic)],
+    [`${s.taxas.nomeLocal} ${s.ano}`, P(s.taxas.ic)],
     ['IBS/CBS na base do ICMS', p.chaveIbsCbsNaBaseIcms ? 'Sim' : 'Não'],
     ['PIS/Cofins cumulativo / não cumulativo', `${R(p.pisCofinsCumulativo)}% / ${R(p.pisCofinsNaoCumulativo)}%`],
     ['IRPJ / CSLL', `${R(p.aliqIrpj)}% / ${R(p.aliqCsll)}%`],
@@ -172,6 +181,8 @@ function Relatorio({ s, ent, p, est }) {
     ['Presunção serviço (IRPJ/CSLL)', `${R(p.presuncao.servico.irpj)}% / ${R(p.presuncao.servico.csll)}%`],
     ['IRPJ/CSLL Lucro Real', `${R(p.irLucroReal)}% do LAIR`],
     ['Parcela de IBS/CBS no DAS', `${R(p.parcelaIbsCbsNoDas)}%`],
+    ['DAS estimado do fornecedor do Simples', `${R(p.dasFornecedor)}%`],
+    ['Custos/despesas fixos nos anos da Reforma', p.fixosModo === 'pct' ? '% sobre o custo do ano' : 'valor em R$ de hoje'],
   ];
   return (
     <div className="relatorio print-only">

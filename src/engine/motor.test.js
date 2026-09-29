@@ -6,9 +6,13 @@
 //   T2 Simples Híbrido .. nota 107,95 → 107,96 · crédito 9,19 → 9,20 (custo real igual)
 //   T3 Repassar ......... IBS/CBS 12,48 → 12,47 · nota 146,49 → 146,48
 //   T3 Manter lucro ..... IBS/CBS 12,94 → 12,95 · nota 151,98 → 151,99
+//
+// Convenção de entrada (decidida com o usuário): o valor da compra é informado SEM PIS/Cofins.
+// Por isso a nota de 100,00 de hoje de um fornecedor do Lucro Real entra como 90,75
+// (100 × (1 − 9,25%)) e a do Presumido como 96,35. Os resultados esperados não mudam.
 
 import { describe, it, expect } from 'vitest';
-import { formarPreco, custoDaCompra, custoHoje, simular, linhaDoTempo } from './motor.js';
+import { formarPreco, custoDaCompra, compraHoje, simular, linhaDoTempo } from './motor.js';
 import { PREMISSAS_PADRAO, taxasDoAno } from './premissas.js';
 import { r2 } from './numeros.js';
 
@@ -48,37 +52,49 @@ describe('T1 · Markup genérico', () => {
   });
 });
 
-describe('T2 · Custo real por fornecedor (V = 100, 2027, comprador que credita)', () => {
-  const base = { V: 100, dasFornecedor: 0.08, parcela: 0.155, compradorCredita: true, cbs: 0.0921, ibs: 0.001 };
+describe('T2 · Custo real por fornecedor (nota de hoje = 100, 2027, comprador que credita)', () => {
+  const base = { dasFornecedor: 0.08, parcela: 0.155, creditaIbs: true, cbs: 0.0921, ibs: 0.001 };
+  // [fornecedor, valor sem PIS/Cofins, esperado]
   const casos = [
-    ['real', false, { base: 90.75, nota: 99.2, credito: 8.45, custo: 90.75 }],
-    ['presumido', false, { base: 96.35, nota: 105.32, credito: 8.97, custo: 96.35 }],
-    ['simples_hibrido', false, { base: 98.76, nota: 107.96, credito: 9.2, custo: 98.76 }],
-    ['simples_unico', false, { base: null, nota: 100, credito: 1.24, custo: 98.76 }],
-    ['real', true, { base: 90.75, nota: 99.2, credito: 0, custo: 99.2 }],
+    ['real', 90.75, { base: 90.75, nota: 99.2, credito: 8.45, custo: 90.75 }],
+    ['presumido', 96.35, { base: 96.35, nota: 105.32, credito: 8.97, custo: 96.35 }],
+    ['simples_hibrido', 100, { base: 98.76, nota: 107.96, credito: 9.2, custo: 98.76 }],
+    ['simples_unico', 100, { base: null, nota: 100, credito: 1.24, custo: 98.76 }],
   ];
-  for (const [forn, uso, esp] of casos) {
-    it(`${forn}${uso ? ' (uso e consumo pessoal)' : ''}`, () => {
-      const c = custoDaCompra({ ...base, fornecedor: forn, usoPessoal: uso });
+  for (const [forn, V, esp] of casos) {
+    it(forn, () => {
+      const c = custoDaCompra({ ...base, V, fornecedor: forn });
       expect(c.base).toBe(esp.base);
       expect(c.nota).toBe(esp.nota);
       expect(c.credito).toBe(esp.credito);
       expect(c.custo).toBe(esp.custo);
     });
   }
-  it('comprador do Simples Nacional não credita: custo = nota inteira', () => {
-    const c = custoDaCompra({ ...base, fornecedor: 'real', compradorCredita: false });
+  it('uso e consumo pessoal (fornecedor LR): sem crédito, custo = nota', () => {
+    const c = custoDaCompra({ ...base, V: 90.75, fornecedor: 'real', creditaIbs: false });
+    expect(c.credito).toBe(0);
     expect(c.custo).toBe(99.2);
   });
-  it('custo de hoje: Presumido = V; Lucro Real = V × (1 − 9,25%)', () => {
-    expect(custoHoje({ V: 100, regimeComprador: 'presumido' })).toBe(100);
-    expect(custoHoje({ V: 100, regimeComprador: 'real' })).toBe(90.75);
+  it('nota de hoje reconstruída a partir do valor sem PIS/Cofins', () => {
+    expect(compraHoje({ V: 90.75, fornecedor: 'real' }).nota).toBe(100);
+    expect(compraHoje({ V: 96.35, fornecedor: 'presumido' }).nota).toBe(100);
+  });
+  it('custo de hoje: Presumido = nota; Lucro Real = nota × (1 − 9,25%)', () => {
+    expect(compraHoje({ V: 90.75, fornecedor: 'real' }).custo).toBe(100);
+    expect(compraHoje({ V: 90.75, fornecedor: 'real', creditaPis: true }).custo).toBe(90.75);
+  });
+  it('Simples Híbrido e Simples Nacional dão o mesmo custo (repasse integral)', () => {
+    const h = custoDaCompra({ ...base, V: 100, fornecedor: 'simples_hibrido' });
+    const u = custoDaCompra({ ...base, V: 100, fornecedor: 'simples_unico' });
+    expect(h.custo).toBe(u.custo);
+    expect(h.credito).toBeGreaterThan(u.credito);
+    expect(h.nota).toBeGreaterThan(u.nota);
   });
 });
 
 describe('T3 · Presumido comprando do Lucro Real (sem ICMS, 2027)', () => {
   const p = { ...P0, icmsProduto: 0 };
-  const ent = { ano: 2027, regime: 'presumido', atividade: 'comercio', valorCompra: 100, fornecedor: 'real', despesas: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8, dasFornecedor: 8 };
+  const ent = { ano: 2027, regime: 'presumido', atividade: 'comercio', valorCompra: 90.75, fornecedor: 'real', despesasVar: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
   const s = simular(ent, p);
   const esperado = {
     hoje: { nota: 156.08, ibsCbs: 0, receitaBruta: 156.08, pis: 5.7, receitaLiquida: 150.38, custo: 100, lucroBruto: 50.38, despesas: 15.61, lair: 34.77, ir: 3.56, lucroLiquido: 31.22, margem: 0.2076 },
@@ -96,7 +112,7 @@ describe('T3 · Presumido comprando do Lucro Real (sem ICMS, 2027)', () => {
       expect(cent(c.receitaLiquida)).toBe(e.receitaLiquida);
       expect(cent(c.custo)).toBe(e.custo);
       expect(cent(c.lucroBruto)).toBe(e.lucroBruto);
-      expect(cent(c.despesas)).toBe(e.despesas);
+      expect(cent(c.despesasVar)).toBe(e.despesas);
       expect(cent(c.lair)).toBe(e.lair);
       expect(cent(c.ir)).toBe(e.ir);
       expect(cent(c.lucroLiquido)).toBe(e.lucroLiquido);
@@ -127,7 +143,7 @@ describe('T3 · Presumido comprando do Lucro Real (sem ICMS, 2027)', () => {
 });
 
 describe('T4 · Transição (custo 100, Presumido, ICMS 19,5%, chave N)', () => {
-  const ent = { regime: 'presumido', atividade: 'comercio', valorCompra: 100, fornecedor: 'real', despesas: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8, dasFornecedor: 8 };
+  const ent = { regime: 'presumido', atividade: 'comercio', valorCompra: 100, fornecedor: 'real', despesasVar: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
   const opts = { custoAnoFixo: 100, custoHojeFixo: 100 };
   const linhas = linhaDoTempo(ent, P0, opts);
   const esperado = {
@@ -164,7 +180,7 @@ describe('T4 · Transição (custo 100, Presumido, ICMS 19,5%, chave N)', () => 
 });
 
 describe('decisões do usuário', () => {
-  const base = { ano: 2027, atividade: 'comercio', valorCompra: 100, fornecedor: 'real', despesas: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8, dasFornecedor: 8 };
+  const base = { ano: 2027, atividade: 'comercio', valorCompra: 100, fornecedor: 'real', despesasVar: 10, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
   it('Lucro Real: margem informada é depois do IR (lucro líquido = 20% da receita)', () => {
     const s = simular({ ...base, regime: 'real' }, { ...P0, icmsProduto: 0 });
     expect(s.hoje.lucroLiquido / s.hoje.preco).toBeCloseTo(0.2, 10);
@@ -199,5 +215,91 @@ describe('decisões do usuário', () => {
   });
   it('erro claro quando margem + despesas + tributos ≥ 100%', () => {
     expect(() => simular({ ...base, regime: 'presumido', margem: 80 }, P0)).toThrow(/100%/);
+  });
+});
+
+describe('ajustes da segunda rodada', () => {
+  const base = { ano: 2027, regime: 'presumido', atividade: 'comercio', valorCompra: 100, fornecedor: 'real', icmsFornecedor: 0, despesasVar: 10, despesasFixas: 0, modo: 'margem', margem: 20, cliente: 'consumidor', das: 8 };
+
+  it('fixos somados ao custo e variáveis no divisor: 100 + 10% = 110 → 110 ÷ 0,9 = 122,22', () => {
+    expect(cent(formarPreco({ custo: 100, fixos: 10, despesas: 0.1 }).preco)).toBe(122.22);
+  });
+  it('fixos em R$: mantidos no valor de hoje mesmo com o custo caindo', () => {
+    const s = simular({ ...base, despesasFixas: 10 }, { ...P0, icmsProduto: 0 });
+    expect(cent(s.hoje.fixos)).toBe(cent(s.custoHoje * 0.1));
+    expect(cent(s.lucro.fixos)).toBe(cent(s.hoje.fixos));
+    expect(cent(s.lucro.lucroLiquido)).toBe(cent(s.hoje.lucroLiquido));
+  });
+  it('fixos em %: acompanham o custo do ano', () => {
+    const s = simular({ ...base, despesasFixas: 10 }, { ...P0, icmsProduto: 0, fixosModo: 'pct' });
+    expect(cent(s.lucro.fixos)).toBe(cent(s.custoAno * 0.1));
+  });
+  it('preço de hoje com fixos segue a fórmula (custo + fixos) ÷ divisor', () => {
+    const s = simular({ ...base, despesasFixas: 10 }, { ...P0, icmsProduto: 0 });
+    expect(s.hoje.preco).toBeCloseTo((s.custoHoje * 1.1) / s.hoje.divisor, 10);
+  });
+
+  it('ICMS do fornecedor: crédito reduz o custo e o custo real fica estável na transição', () => {
+    const arg = { V: 100, fornecedor: 'real', icmsFornecedor: 0.12, creditaIbs: true, creditaIcms: true, cbs: 0.0921, ibs: 0.001 };
+    const h = compraHoje({ V: 100, fornecedor: 'real', icmsFornecedor: 0.12, creditaIcms: true });
+    expect(h.nota).toBe(110.19);
+    expect(h.icmsV).toBe(13.22);
+    expect(h.custo).toBe(96.97);
+    const c27 = custoDaCompra({ ...arg, fator: 1 });
+    expect(c27.icmsV).toBe(12);
+    expect(c27.nota).toBe(108.19);
+    expect(c27.custo).toBe(88);
+    const c30 = custoDaCompra({ ...arg, fator: 0.8 });
+    expect(c30.icmsV).toBe(9.35);
+    expect(c30.custo).toBe(88);
+  });
+  it('quem não credita ICMS (serviço) fica com o ICMS do fornecedor no custo', () => {
+    const c = custoDaCompra({ V: 100, fornecedor: 'real', icmsFornecedor: 0.12, fator: 1, creditaIbs: true, creditaIcms: false, cbs: 0.0921, ibs: 0.001 });
+    expect(c.custo).toBe(100);
+  });
+
+  it('serviço usa ISS no lugar do ICMS, com a mesma redução (ADCT, art. 128)', () => {
+    const s = simular({ ...base, atividade: 'servico', ano: 2029 }, P0);
+    expect(s.taxas.nomeLocal).toBe('ISS');
+    expect(s.taxas.ic).toBeCloseTo(0.045, 10);
+    expect(s.hoje.e).toBeCloseTo(0.05, 10);
+    expect(s.memoria['lucro.icms'].rotulo).toMatch(/^ISS/);
+    // IBS da hipótese repõe o ISS que saiu: (5% − 4,5%) ÷ (1 − 4,5%)
+    expect(s.taxas.ibs).toBeCloseTo(0.005 / 0.955, 10);
+  });
+  it('serviço não usa a chave S (ela é só do ICMS)', () => {
+    const n = simular({ ...base, atividade: 'servico' }, P0);
+    const comChave = simular({ ...base, atividade: 'servico' }, { ...P0, chaveIbsCbsNaBaseIcms: true });
+    expect(comChave.repassar.nota).toBe(n.repassar.nota);
+  });
+
+  it('2026: ano de teste, preço e nota iguais aos de hoje; IBS/CBS só informativo', () => {
+    const s = simular({ ...base, ano: 2026 }, P0);
+    expect(s.teste).toBe(true);
+    for (const id of ['lucro', 'repassar', 'nota']) {
+      expect(cent(s[id].preco)).toBe(cent(s.hoje.preco));
+      expect(s[id].nota).toBe(s.hoje.nota);
+      expect(s[id].ibsCbs).toBe(0);
+    }
+    expect(s.taxas.cbs).toBeCloseTo(0.009, 10);
+    const base26 = s.lucro.preco * (1 - 0.195);
+    expect(s.lucro.info.ibsCbs).toBe(r2(r2(base26 * 0.009) + r2(base26 * 0.001)));
+    expect(s.memoria['lucro.ibsCbsInfo']).toBeTruthy();
+  });
+  it('linha do tempo começa em 2026', () => {
+    expect(linhaDoTempo(base, P0)[0].ano).toBe(2026);
+  });
+  it('todo número de todos os anos e regimes tem memória', () => {
+    for (const regime of ['presumido', 'real', 'simples_unico', 'simples_hibrido']) {
+      for (const atividade of ['comercio', 'servico']) {
+        for (const l of linhaDoTempo({ ...base, regime, atividade, despesasFixas: 5, icmsFornecedor: 12 }, P0)) {
+          expect(l.erro, regime + ' ' + atividade + ' ' + l.ano).toBeUndefined();
+          for (const m of Object.values(l.memoria)) {
+            expect(m.formula, m.id).toBeTruthy();
+            expect(m.subst, m.id).toBeTruthy();
+          }
+        }
+      }
+    }
   });
 });

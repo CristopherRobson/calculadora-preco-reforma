@@ -35,3 +35,13 @@ Para publicar, rode `npm run deploy`: ele roda os testes, gera o build e envia p
 - **Arredondamento na DRE:** as linhas são calculadas com o valor exato e exibidas a 2 casas. Quando a soma das linhas exibidas difere em 1 centavo, a memória sinaliza (ponto dourado).
 - **Tipo de cliente:** consumidor final ou uso e consumo pessoal (não credita); empresa no regime regular de IBS/CBS, isto é, Lucro Real, Presumido ou Simples optante (credita); empresa do Simples não optante (não credita). Na comparação com hoje, o cliente regular aparece nas duas situações: sem crédito e, se for do Lucro Real, com crédito de PIS/Cofins.
 - **Modo "Sei meu preço de venda":** a margem de hoje é deduzida do preço informado.
+
+## Segunda rodada de ajustes
+
+- **Valor da compra sem PIS/Cofins:** é o preço do fornecedor a partir de 2027. Para comparar com hoje, a nota atual é reconstruída: valor ÷ (1 − PIS/Cofins do fornecedor). Fornecedor do Simples: informa-se o valor da nota.
+- **ICMS do fornecedor:** vira crédito para quem vende no Presumido ou no Real, na atividade de comércio. Na transição, o ICMS do fornecedor cai com o fator do ano e ele repassa (mantém o preço líquido); para quem credita, o custo fica estável.
+- **DAS do fornecedor do Simples:** estimativa de 8% nos ajustes avançados. O comprador não sabe o DAS real; o impacto é de cerca de 0,16% do custo por ponto de DAS.
+- **Simples Híbrido × Simples Nacional:** com repasse integral, os dois dão o mesmo custo. O Híbrido dá mais crédito, mas a nota sobe na mesma medida.
+- **Serviço:** usa ISS no lugar do ICMS, com a mesma redução da transição (ADCT, art. 128). A chave "IBS/CBS na base do ICMS" não se aplica ao ISS.
+- **2026:** ano de teste. CBS 0,9% e IBS 0,1% destacados só para informação; preço, nota e custo iguais aos de hoje.
+- **Custos/despesas:** fixos em % do custo, somados ao custo (100 + 10% = 110); variáveis em % do preço, no divisor (110 ÷ 0,9 = 122,22). Nos anos da Reforma, os fixos mantêm o valor em R$ de hoje (padrão) ou acompanham o custo do ano (opção nos ajustes avançados).

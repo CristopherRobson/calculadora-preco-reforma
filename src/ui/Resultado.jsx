@@ -14,6 +14,8 @@ export function Destaque({ s, est }) {
   const h = s.hoje;
   const varNota = h.nota > 0 ? c.nota / h.nota - 1 : 0;
   const varLucro = c.lucroLiquido - h.lucroLiquido;
+  const teste = s.teste;
+  const temInfo = !!s.memoria[`${est}.ibsCbsInfo`];
   const titulo = {
     lucro: `Para manter seu lucro em ${s.ano}`,
     repassar: `Mantendo sua margem em ${s.ano}`,
@@ -37,6 +39,13 @@ export function Destaque({ s, est }) {
       </>
     ),
   }[est];
+  const fraseFinal = teste ? (
+    <>
+      Em 2026 nada muda no preço: é o ano de teste. {temInfo ? 'A nota destaca CBS 0,9% e IBS 0,1% só para informação, sem cobrança.' : 'O Simples Nacional não participa do teste.'}
+    </>
+  ) : (
+    frase
+  );
 
   return (
     <section className="destaque" aria-live="polite">
@@ -50,15 +59,23 @@ export function Destaque({ s, est }) {
           </span>
         </div>
         <div className="destaque__mais" aria-hidden="true">
-          +
+          {teste ? '·' : '+'}
         </div>
-        <div className="destaque__bloco">
-          <span className="destaque__rotulo">IBS/CBS por fora</span>
-          <Num id={`${est}.ibsCbs`} prefixo="R$ " className="destaque__imposto" />
-          <span className="destaque__sub">{s.ctxAno.porFora ? `${P(s.taxas.a)}, somado por fora` : 'Dentro do DAS'}</span>
-        </div>
+        {teste ? (
+          <div className="destaque__bloco">
+            <span className="destaque__rotulo">IBS/CBS só informativo</span>
+            {temInfo ? <Num id={`${est}.ibsCbsInfo`} prefixo="R$ " className="destaque__imposto" /> : <span className="destaque__imposto">—</span>}
+            <span className="destaque__sub">Não soma à nota em 2026</span>
+          </div>
+        ) : (
+          <div className="destaque__bloco">
+            <span className="destaque__rotulo">IBS/CBS por fora</span>
+            <Num id={`${est}.ibsCbs`} prefixo="R$ " className="destaque__imposto" />
+            <span className="destaque__sub">{s.ctxAno.porFora ? `${P(s.taxas.a)}, somado por fora` : 'Dentro do DAS'}</span>
+          </div>
+        )}
         <div className="destaque__mais" aria-hidden="true">
-          =
+          {teste ? '·' : '='}
         </div>
         <div className="destaque__bloco">
           <span className="destaque__rotulo">Total da nota ao cliente</span>
@@ -71,7 +88,7 @@ export function Destaque({ s, est }) {
           </span>
         </div>
       </div>
-      <p className="destaque__frase">{frase}</p>
+      <p className="destaque__frase">{fraseFinal}</p>
       <p className="destaque__regra">O IBS/CBS nunca entra no divisor do markup: é calculado sobre o preço e somado no fim.</p>
     </section>
   );
@@ -145,15 +162,17 @@ export function Cartoes({ est }) {
 
 const LINHAS_DRE = [
   { k: 'nota', nome: 'Nota (valor cobrado)', tipo: 'total' },
+  { k: 'ibsCbsInfo', nome: 'IBS/CBS destacado (só informativo)', opcional: true, info: true },
   { k: 'ibsCbs', nome: '(−) IBS/CBS por fora' },
   { k: 'receitaBruta', nome: '= Receita bruta', tipo: 'sub' },
   { k: 'pis', nome: '(−) PIS/Cofins', opcional: true },
-  { k: 'icms', nome: '(−) ICMS', opcional: true },
+  { k: 'icms', nome: (s) => `(−) ${s.taxas.nomeLocal}`, opcional: true },
   { k: 'das', nome: '(−) DAS', opcional: true },
   { k: 'receitaLiquida', nome: '= Receita líquida', tipo: 'sub' },
   { k: 'custo', nome: '(−) Custo da mercadoria' },
   { k: 'lucroBruto', nome: '= Lucro bruto', tipo: 'sub' },
-  { k: 'despesas', nome: '(−) Despesas' },
+  { k: 'despesasVar', nome: '(−) Custos/despesas variáveis' },
+  { k: 'fixos', nome: '(−) Custos/despesas fixos', seNaoZero: true },
   { k: 'lair', nome: '= Lucro antes do IR/CSLL', tipo: 'sub' },
   { k: 'ir', nome: '(−) IRPJ/CSLL' },
   { k: 'lucroLiquido', nome: '= Lucro líquido', tipo: 'total' },
@@ -163,7 +182,9 @@ const LINHAS_DRE = [
 export function TabelaDRE({ s, est, setEst }) {
   const cols = ['hoje', 'lucro', 'repassar', 'nota'];
   const mem = s.memoria;
-  const linhas = LINHAS_DRE.filter((l) => !l.opcional || cols.some((c) => mem[`${c}.${l.k}`]));
+  const linhas = LINHAS_DRE.filter(
+    (l) => (!l.opcional || cols.some((c) => mem[`${c}.${l.k}`])) && (!l.seNaoZero || cols.some((c) => Math.abs(mem[`${c}.${l.k}`]?.valor || 0) > 0.0001)),
+  );
   return (
     <div className="tabela-rolagem">
       <table className="tabela">
@@ -186,8 +207,8 @@ export function TabelaDRE({ s, est, setEst }) {
         </thead>
         <tbody>
           {linhas.map((l) => (
-            <tr key={l.k} className={l.tipo ? `linha--${l.tipo}` : ''}>
-              <th scope="row">{l.nome}</th>
+            <tr key={l.k} className={`${l.tipo ? `linha--${l.tipo}` : ''} ${l.info ? 'linha--info' : ''}`}>
+              <th scope="row">{typeof l.nome === 'function' ? l.nome(s) : l.nome}</th>
               {cols.map((c) => (
                 <td key={c} className={c === est ? 'col-ativa' : ''}>
                   {mem[`${c}.${l.k}`] ? <Num id={`${c}.${l.k}`} /> : <span className="vazio">—</span>}
@@ -257,33 +278,67 @@ export function VisaoCliente({ s, est }) {
 // Custo da compra
 // ---------------------------------------------------------------------------
 
-export function CustoCompra({ s }) {
+function TabelaCompra({ titulo, linhas, m }) {
+  const visiveis = linhas.filter(([id]) => m[id]);
+  return (
+    <table className="tabela tabela--estreita">
+      <thead>
+        <tr>
+          <th scope="col" colSpan={2}>
+            {titulo}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {visiveis.map(([id, nome]) => (
+          <tr key={id} className={nome.startsWith('=') ? 'linha--sub' : ''}>
+            <th scope="row">{nome}</th>
+            <td>
+              <Num id={id} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export function CustoCompra({ s, fornecedor }) {
   const m = s.memoria;
-  const linhas = [
-    ['compra.V', 'Nota de compra hoje'],
-    ['compra.hoje', 'Custo da mercadoria hoje'],
-    ['compra.base', 'Preço do fornecedor sem o tributo que sai'],
+  const simples = fornecedor === 'simples_unico' || fornecedor === 'simples_hibrido';
+  const hoje = [
+    ['compra.V', simples ? 'Valor da nota informado' : 'Valor sem PIS/Cofins informado'],
+    ['compra.hojeNota', '= Nota de compra hoje'],
+    ['compra.hojeIcms', 'ICMS na nota (por dentro)'],
+    ['compra.hojeCreditoPis', '(−) Crédito de PIS/Cofins'],
+    ['compra.hojeCreditoIcms', '(−) Crédito de ICMS'],
+    ['compra.hoje', '= Custo hoje'],
+  ];
+  const ano = [
+    ['compra.preco', 'Preço do fornecedor sem IBS/CBS'],
+    ['compra.icms', 'ICMS na nota (por dentro)'],
     ['compra.cbs', '(+) CBS'],
     ['compra.ibs', '(+) IBS'],
     ['compra.nota', `= Nota de compra ${s.ano}`],
+    ['compra.creditoIcms', '(−) Crédito de ICMS'],
     ['compra.credito', '(−) Crédito de IBS/CBS'],
     ['compra.custo', `= Custo real ${s.ano}`],
-  ].filter(([id]) => m[id]);
+  ];
   return (
     <div>
-      <p className="aba__intro">Premissa de mercado: o fornecedor tira do preço o tributo que hoje está embutido e soma o IBS/CBS por fora. O custo real é a nota menos o crédito.</p>
-      <table className="tabela tabela--estreita">
-        <tbody>
-          {linhas.map(([id, nome]) => (
-            <tr key={id} className={nome.startsWith('=') ? 'linha--sub' : ''}>
-              <th scope="row">{nome}</th>
-              <td>
-                <Num id={id} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="aba__intro">
+        Premissa de mercado: o fornecedor mantém o preço líquido de tributos e soma o IBS/CBS por fora. O ICMS cai ano a ano e ele repassa. O custo real é a nota menos os créditos.
+      </p>
+      <div className="compra__grade">
+        <TabelaCompra titulo="Hoje" linhas={hoje} m={m} />
+        <TabelaCompra titulo={String(s.ano)} linhas={ano} m={m} />
+      </div>
+      {simples && (
+        <p className="nota-explicativa">
+          <strong>Simples Nacional ou Simples Híbrido dão o mesmo custo.</strong> O fornecedor Híbrido tira do preço só a parcela de IBS/CBS do DAS dele e soma o IBS/CBS cheio por fora. Você credita
+          mais, mas a nota sobe na mesma medida. A vantagem do Híbrido fica com o fornecedor, que passa a creditar o IBS/CBS das compras dele. Ela só chega até você se ele baixar o preço.
+        </p>
+      )}
     </div>
   );
 }
@@ -295,17 +350,18 @@ export function CustoCompra({ s }) {
 export function LinhaDoTempo({ linhas, est, anoAtual, setAno }) {
   const validas = linhas.filter((l) => !l.erro);
   const max = Math.max(...validas.map((l) => l[est].nota), ...validas.map((l) => l.hoje.nota));
+  const local = validas[0]?.nomeLocal || 'ICMS';
   return (
     <div>
       <p className="aba__intro">
-        A mesma operação de 2027 a 2033, na estratégia <strong>{NOME[est]}</strong>. O ICMS cai e o IBS sobe. Clique numa linha para simular aquele ano.
+        A mesma operação de 2026 a 2033, na estratégia <strong>{NOME[est]}</strong>. O {local} cai e o IBS sobe. Clique numa linha para simular aquele ano.
       </p>
       <div className="tabela-rolagem">
         <table className="tabela tabela--tempo">
           <thead>
             <tr>
               <th scope="col">Ano</th>
-              <th scope="col">ICMS</th>
+              <th scope="col">{local}</th>
               <th scope="col">IBS</th>
               <th scope="col">CBS</th>
               <th scope="col">Preço</th>
@@ -327,7 +383,10 @@ export function LinhaDoTempo({ linhas, est, anoAtual, setAno }) {
                 </tr>
               ) : (
                 <tr key={l.ano} className={`linha-ano ${l.ano === anoAtual ? 'linha-ano--ativa' : ''}`} onClick={(e) => !e.target.closest('.num') && setAno(l.ano)}>
-                  <th scope="row">{l.ano}</th>
+                  <th scope="row">
+                    {l.ano}
+                    {l.teste && <span className="selo selo--teste">teste</span>}
+                  </th>
                   <td>
                     <Num id="ano.ic" mem={l.memoria} />
                   </td>
@@ -359,7 +418,7 @@ export function LinhaDoTempo({ linhas, est, anoAtual, setAno }) {
         </table>
       </div>
       <p className="legenda">
-        <span className="chip-legenda chip-legenda--ano" /> nota no ano <span className="chip-legenda chip-legenda--hoje" /> nota hoje. Em 2033, a reposição do IBS é da arrecadação total, não produto a produto.
+        <span className="chip-legenda chip-legenda--ano" /> nota no ano <span className="chip-legenda chip-legenda--hoje" /> nota hoje. Em 2026, IBS e CBS são só destacados, sem cobrança. Em 2033, a reposição do IBS é da arrecadação total, não produto a produto.
       </p>
     </div>
   );
