@@ -33,4 +33,5 @@ Para publicar, rode `npm run deploy`: ele roda os testes, gera o build e envia p
 - **Resposta principal:** a estratégia "Manter lucro" (mesmo lucro líquido em R$ de hoje) fica em destaque. As outras duas ficam lado a lado.
 - **Manter a nota:** às vezes nenhum preço em centavos fecha a nota exatamente, porque a nota pula 2 centavos. Nesses casos, usa-se a nota mais próxima sem passar da de hoje, e a memória avisa.
 - **Arredondamento na DRE:** as linhas são calculadas com o valor exato e exibidas a 2 casas. Quando a soma das linhas exibidas difere em 1 centavo, a memória sinaliza (ponto dourado).
+- **Tipo de cliente:** consumidor final ou uso e consumo pessoal (não credita); empresa no regime regular de IBS/CBS, isto é, Lucro Real, Presumido ou Simples optante (credita); empresa do Simples não optante (não credita). Na comparação com hoje, o cliente regular aparece nas duas situações: sem crédito e, se for do Lucro Real, com crédito de PIS/Cofins.
 - **Modo "Sei meu preço de venda":** a margem de hoje é deduzida do preço informado.

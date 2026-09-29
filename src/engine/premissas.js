@@ -4,8 +4,9 @@ export const ANOS = [2027, 2028, 2029, 2030, 2031, 2032, 2033];
 
 export const PREMISSAS_PADRAO = {
   cbs: 9.21,
-  // null = hipótese automática (2029–2032: o IBS repõe o ICMS que saiu)
-  ibsAno: { 2027: 0.1, 2028: 0.1, 2029: null, 2030: null, 2031: null, 2032: null, 2033: 18.7 },
+  // null = valor padrão: 0,10% em 2027–2028, 18,70% a partir de 2033 e, de 2029 a 2032,
+  // a hipótese de que o IBS repõe o ICMS que saiu. Um número aqui sobrescreve o padrão.
+  ibsAno: { 2027: null, 2028: null, 2029: null, 2030: null, 2031: null, 2032: null, 2033: null },
   fatorIcms: { 2027: 1, 2028: 1, 2029: 0.9, 2030: 0.8, 2031: 0.7, 2032: 0.6, 2033: 0 },
   icmsProduto: 19.5,
   chaveIbsCbsNaBaseIcms: false,

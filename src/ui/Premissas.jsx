@@ -5,9 +5,11 @@ import { P } from '../engine/numeros.js';
 function Grupo({ titulo, base, children }) {
   return (
     <section className="premissas__grupo">
-      <h3>{titulo}</h3>
-      {base && <p className="premissas__base">{base}</p>}
-      <div className="premissas__grade">{children}</div>
+      <header className="premissas__cab">
+        <h3>{titulo}</h3>
+        {base && <p className="premissas__base">{base}</p>}
+      </header>
+      {children}
     </section>
   );
 }
@@ -16,65 +18,121 @@ export default function Premissas({ p, setP, restaurar }) {
   const set = (k, v) => setP({ ...p, [k]: v });
   const setAno = (grupo, ano, v) => setP({ ...p, [grupo]: { ...p[grupo], [ano]: v } });
   const setPres = (ativ, k, v) => setP({ ...p, presuncao: { ...p.presuncao, [ativ]: { ...p.presuncao[ativ], [k]: v } } });
+  const pres = (ativ) => (p.aliqIrpj / 100) * (p.presuncao[ativ].irpj / 100) + (p.aliqCsll / 100) * (p.presuncao[ativ].csll / 100);
 
   return (
     <div className="premissas">
-      <p className="premissas__intro">
-        Valores padrão da especificação. Altere quando sair norma nova, por exemplo as alíquotas de referência do Senado. <strong>O IBS/CBS nunca entra no divisor do markup:</strong> ele é
-        calculado por fora, no fim.
-      </p>
-      <button type="button" className="btn btn--contorno" onClick={restaurar}>
-        Restaurar padrão
-      </button>
+      <div className="premissas__topo">
+        <p className="premissas__intro">Valores padrão da especificação. Altere quando sair norma nova, como as alíquotas de referência do Senado.</p>
+        <button type="button" className="btn btn--contorno" onClick={restaurar}>
+          Restaurar padrão
+        </button>
+      </div>
 
-      <Grupo titulo="IBS e CBS" base={`${BASE_LEGAL.cbs} · ${BASE_LEGAL.ibsTransicao}`}>
-        <CampoNumero rotulo="CBS" sufixo="%" valor={p.cbs} onChange={(v) => set('cbs', v)} compacto />
-        {ANOS.map((ano) => {
-          const auto = p.ibsAno[ano] === null || p.ibsAno[ano] === '';
-          const calc = taxasDoAno({ ...p, ibsAno: { ...p.ibsAno, [ano]: null } }, ano);
-          return (
-            <CampoNumero
-              key={ano}
-              rotulo={`IBS ${ano}`}
-              sufixo="%"
-              valor={auto ? '' : p.ibsAno[ano]}
-              placeholder={auto ? `auto ${P(calc.ibs).replace('%', '')}` : ''}
-              onChange={(v) => setAno('ibsAno', ano, v === '' ? null : v)}
-              dica={ano >= 2029 && ano <= 2032 ? (auto ? 'Hipótese: repõe o ICMS que saiu' : 'Informado') : undefined}
-              compacto
-            />
-          );
-        })}
+      <Grupo titulo="Alíquotas-base" base={`${BASE_LEGAL.cbs} · ${BASE_LEGAL.icms}`}>
+        <div className="premissas__linha">
+          <CampoNumero rotulo="CBS" sufixo="%" valor={p.cbs} onChange={(v) => set('cbs', v)} compacto />
+          <CampoNumero rotulo="ICMS do produto" sufixo="%" valor={p.icmsProduto} onChange={(v) => set('icmsProduto', v)} compacto />
+        </div>
+        <Chave
+          rotulo="IBS/CBS na base do ICMS"
+          valor={p.chaveIbsCbsNaBaseIcms}
+          onChange={(v) => set('chaveIbsCbsNaBaseIcms', v)}
+          dica="LC 87/1996, art. 13, §1º. Tema em disputa; o padrão é Não."
+        />
       </Grupo>
-      <p className="premissas__nota">Nos anos de 2029 a 2032, deixe o campo vazio para usar a hipótese automática. Em 2033, a reposição é da arrecadação total, não produto a produto.</p>
 
-      <Grupo titulo="ICMS na transição" base={`${BASE_LEGAL.icmsFator} · ${BASE_LEGAL.icms}`}>
-        <CampoNumero rotulo="Alíquota ICMS do produto" sufixo="%" valor={p.icmsProduto} onChange={(v) => set('icmsProduto', v)} compacto />
-        {ANOS.map((ano) => (
-          <CampoNumero key={ano} rotulo={`Fator ${ano}`} valor={p.fatorIcms[ano]} onChange={(v) => setAno('fatorIcms', ano, v === '' ? 0 : v)} compacto />
-        ))}
+      <Grupo titulo="Calendário da transição" base={`${BASE_LEGAL.icmsFator} · ADCT, arts. 127 e 130`}>
+        <table className="tabela-prem">
+          <thead>
+            <tr>
+              <th scope="col">Ano</th>
+              <th scope="col">Fator ICMS</th>
+              <th scope="col">ICMS do ano</th>
+              <th scope="col">IBS</th>
+              <th scope="col">Origem do IBS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ANOS.map((ano) => {
+              const vazio = p.ibsAno[ano] === null || p.ibsAno[ano] === '';
+              const t = taxasDoAno(p, ano);
+              const padrao = taxasDoAno({ ...p, ibsAno: { ...p.ibsAno, [ano]: null } }, ano);
+              const origem = !vazio ? 'Informado' : padrao.ibsAuto ? 'Repõe ICMS' : ano >= 2033 ? 'Referência' : 'Padrão';
+              return (
+                <tr key={ano}>
+                  <th scope="row">{ano}</th>
+                  <td>
+                    <CampoNumero valor={p.fatorIcms[ano]} onChange={(v) => setAno('fatorIcms', ano, v === '' ? 0 : v)} compacto />
+                  </td>
+                  <td className="tabela-prem__calc">{P(t.ic)}</td>
+                  <td>
+                    <CampoNumero
+                      sufixo="%"
+                      valor={vazio ? '' : p.ibsAno[ano]}
+                      placeholder={P(padrao.ibs).replace('%', '')}
+                      onChange={(v) => setAno('ibsAno', ano, v === '' ? null : v)}
+                      compacto
+                    />
+                  </td>
+                  <td className={`tabela-prem__origem ${!vazio ? 'tabela-prem__origem--editado' : ''}`}>{origem}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="premissas__nota">Campo do IBS vazio = valor padrão, em cinza. Digite um valor para sobrescrever. De 2029 a 2032, o padrão é a hipótese de que o IBS repõe o ICMS que saiu. Em 2033, a reposição é da arrecadação total, não produto a produto.</p>
       </Grupo>
-      <Chave
-        rotulo="IBS/CBS na base do ICMS"
-        valor={p.chaveIbsCbsNaBaseIcms}
-        onChange={(v) => set('chaveIbsCbsNaBaseIcms', v)}
-        dica="LC 87/1996, art. 13, §1º. Tema em disputa; o padrão é Não."
-      />
 
       <Grupo titulo="Tributos atuais" base={`${BASE_LEGAL.pisCum} · ${BASE_LEGAL.presumido}`}>
-        <CampoNumero rotulo="PIS/Cofins cumulativo" sufixo="%" valor={p.pisCofinsCumulativo} onChange={(v) => set('pisCofinsCumulativo', v)} compacto />
-        <CampoNumero rotulo="PIS/Cofins não cumulativo" sufixo="%" valor={p.pisCofinsNaoCumulativo} onChange={(v) => set('pisCofinsNaoCumulativo', v)} compacto />
-        <CampoNumero rotulo="Alíquota IRPJ" sufixo="%" valor={p.aliqIrpj} onChange={(v) => set('aliqIrpj', v)} compacto />
-        <CampoNumero rotulo="Alíquota CSLL" sufixo="%" valor={p.aliqCsll} onChange={(v) => set('aliqCsll', v)} compacto />
-        <CampoNumero rotulo="Presunção IRPJ · comércio" sufixo="%" valor={p.presuncao.comercio.irpj} onChange={(v) => setPres('comercio', 'irpj', v)} compacto />
-        <CampoNumero rotulo="Presunção CSLL · comércio" sufixo="%" valor={p.presuncao.comercio.csll} onChange={(v) => setPres('comercio', 'csll', v)} compacto />
-        <CampoNumero rotulo="Presunção IRPJ · serviço" sufixo="%" valor={p.presuncao.servico.irpj} onChange={(v) => setPres('servico', 'irpj', v)} compacto />
-        <CampoNumero rotulo="Presunção CSLL · serviço" sufixo="%" valor={p.presuncao.servico.csll} onChange={(v) => setPres('servico', 'csll', v)} compacto />
-        <CampoNumero rotulo="IRPJ/CSLL Lucro Real (sobre o LAIR)" sufixo="%" valor={p.irLucroReal} onChange={(v) => set('irLucroReal', v)} compacto />
+        <div className="premissas__linha">
+          <CampoNumero rotulo="PIS/Cofins cumulativo" sufixo="%" valor={p.pisCofinsCumulativo} onChange={(v) => set('pisCofinsCumulativo', v)} compacto />
+          <CampoNumero rotulo="PIS/Cofins não cumulativo" sufixo="%" valor={p.pisCofinsNaoCumulativo} onChange={(v) => set('pisCofinsNaoCumulativo', v)} compacto />
+          <CampoNumero rotulo="IRPJ/CSLL Lucro Real (LAIR)" sufixo="%" valor={p.irLucroReal} onChange={(v) => set('irLucroReal', v)} compacto />
+        </div>
+        <table className="tabela-prem">
+          <thead>
+            <tr>
+              <th scope="col">Presumido</th>
+              <th scope="col">Presunção IRPJ</th>
+              <th scope="col">Presunção CSLL</th>
+              <th scope="col">Sobre a receita</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Alíquota</th>
+              <td>
+                <CampoNumero sufixo="%" valor={p.aliqIrpj} onChange={(v) => set('aliqIrpj', v)} compacto />
+              </td>
+              <td>
+                <CampoNumero sufixo="%" valor={p.aliqCsll} onChange={(v) => set('aliqCsll', v)} compacto />
+              </td>
+              <td className="tabela-prem__calc">—</td>
+            </tr>
+            {[
+              ['comercio', 'Comércio'],
+              ['servico', 'Serviço'],
+            ].map(([ativ, nome]) => (
+              <tr key={ativ}>
+                <th scope="row">{nome}</th>
+                <td>
+                  <CampoNumero sufixo="%" valor={p.presuncao[ativ].irpj} onChange={(v) => setPres(ativ, 'irpj', v)} compacto />
+                </td>
+                <td>
+                  <CampoNumero sufixo="%" valor={p.presuncao[ativ].csll} onChange={(v) => setPres(ativ, 'csll', v)} compacto />
+                </td>
+                <td className="tabela-prem__calc">{P(pres(ativ))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </Grupo>
 
       <Grupo titulo="Simples Nacional" base={`${BASE_LEGAL.simples} · ${BASE_LEGAL.dasParcela}`}>
-        <CampoNumero rotulo="Parcela de IBS/CBS dentro do DAS" sufixo="%" valor={p.parcelaIbsCbsNoDas} onChange={(v) => set('parcelaIbsCbsNoDas', v)} compacto />
+        <div className="premissas__linha">
+          <CampoNumero rotulo="Parcela de IBS/CBS no DAS" sufixo="%" valor={p.parcelaIbsCbsNoDas} onChange={(v) => set('parcelaIbsCbsNoDas', v)} compacto />
+        </div>
       </Grupo>
 
       <p className="premissas__nota">

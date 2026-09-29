@@ -55,7 +55,7 @@ export function Destaque({ s, est }) {
         <div className="destaque__bloco">
           <span className="destaque__rotulo">IBS/CBS por fora</span>
           <Num id={`${est}.ibsCbs`} prefixo="R$ " className="destaque__imposto" />
-          <span className="destaque__sub">{s.ctxAno.porFora ? `${P(s.taxas.a)} sobre a base` : 'Dentro do DAS'}</span>
+          <span className="destaque__sub">{s.ctxAno.porFora ? `${P(s.taxas.a)}, somado por fora` : 'Dentro do DAS'}</span>
         </div>
         <div className="destaque__mais" aria-hidden="true">
           =
@@ -72,7 +72,7 @@ export function Destaque({ s, est }) {
         </div>
       </div>
       <p className="destaque__frase">{frase}</p>
-      <p className="destaque__regra">O IBS/CBS nunca entra no divisor do markup. Ele é calculado sobre o preço e somado por fora, no fim.</p>
+      <p className="destaque__regra">O IBS/CBS nunca entra no divisor do markup: é calculado sobre o preço e somado no fim.</p>
     </section>
   );
 }
@@ -133,13 +133,6 @@ export function Cartoes({ est }) {
         <Num id={`${est}.margemLiquida`} className="cartao__valor" />
         <span className="cartao__sub">
           Hoje <Num id="hoje.margemLiquida" />
-        </span>
-      </div>
-      <div className="cartao">
-        <span className="eyebrow">Do custo até a nota</span>
-        <Num id={`${est}.custoAteNota`} prefixo="× " className="cartao__valor" />
-        <span className="cartao__sub">
-          Tributos por dentro <Num id={`${est}.sigma`} />
         </span>
       </div>
     </div>
@@ -223,7 +216,15 @@ export function VisaoCliente({ s, est }) {
         <div className="cliente__cartao">
           <span className="eyebrow">Hoje</span>
           <Num id="hoje.custoCliente" prefixo="R$ " className="cartao__valor" />
-          <span className="cartao__sub">{s.cliente.creditaHoje ? 'nota − crédito de PIS/Cofins' : 'nota inteira'}</span>
+          <span className="cartao__sub">
+            {s.cliente.regular ? (
+              <>
+                nota inteira · Lucro Real <Num id="hoje.custoClienteLR" prefixo="R$ " />
+              </>
+            ) : (
+              'nota inteira'
+            )}
+          </span>
         </div>
         {['lucro', 'repassar', 'nota'].map((c) => (
           <div key={c} className={`cliente__cartao ${c === est ? 'cliente__cartao--ativo' : ''}`}>
@@ -240,12 +241,12 @@ export function VisaoCliente({ s, est }) {
         <div>
           <span className="eyebrow">Cliente que credita</span>
           <Num id={`${est}.custoClienteCredita`} prefixo="R$ " className="cartao__valor" />
-          <span className="cartao__sub">Empresas do Lucro Real, Presumido ou Simples Híbrido</span>
+          <span className="cartao__sub">Empresa no regime regular de IBS/CBS</span>
         </div>
         <div>
           <span className="eyebrow">Cliente que não credita</span>
           <Num id={`${est}.custoClienteNaoCredita`} prefixo="R$ " className="cartao__valor" />
-          <span className="cartao__sub">Consumidor final, uso pessoal, Simples Nacional</span>
+          <span className="cartao__sub">Consumidor final, uso e consumo pessoal, Simples não optante</span>
         </div>
       </div>
     </div>

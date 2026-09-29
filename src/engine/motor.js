@@ -224,10 +224,22 @@ export const ESTRATEGIAS = [
 ];
 
 export const CLIENTES = {
-  consumidor: { nome: 'Consumidor final ou uso pessoal', creditaHoje: false, creditaDepois: false },
-  real: { nome: 'Empresa do Lucro Real', creditaHoje: true, creditaDepois: true },
-  presumido_hibrido: { nome: 'Empresa do Presumido ou Simples Híbrido', creditaHoje: false, creditaDepois: true },
-  simples_unico: { nome: 'Empresa do Simples Nacional', creditaHoje: false, creditaDepois: false },
+  consumidor: {
+    nome: 'Consumidor final ou uso e consumo pessoal',
+    dica: 'Pessoa física, ou empresa que compra para uso e consumo pessoal. Não toma crédito.',
+    creditaDepois: false,
+  },
+  regular: {
+    nome: 'Empresa no regime regular de IBS/CBS',
+    dica: 'Lucro Real, Lucro Presumido ou Simples que optou por recolher IBS/CBS por fora. Toma crédito do IBS/CBS destacado.',
+    creditaDepois: true,
+    regular: true,
+  },
+  simples: {
+    nome: 'Empresa do Simples Nacional (não optante)',
+    dica: 'Simples que não optou pelo regime regular: recolhe tudo no DAS e não toma crédito.',
+    creditaDepois: false,
+  },
 };
 
 export const FORNECEDORES = {
@@ -367,7 +379,6 @@ export function simular(ent, p, opts = {}) {
 
   // --- Visão do cliente (5.7) ------------------------------------------------
   const cli = CLIENTES[ent.cliente] || CLIENTES.consumidor;
-  const clienteHoje = cli.creditaHoje ? r2(N0 - r2(N0 * pisNaoCum)) : N0;
   const creditoCliente = (c) => {
     if (!cli.creditaDepois) return 0;
     if (ctxAno.porFora) return c.ibsCbs;
@@ -379,8 +390,10 @@ export function simular(ent, p, opts = {}) {
     c.creditoCliente = creditoCliente(c);
     c.custoCliente = r2(c.nota - c.creditoCliente);
   }
-  hoje.creditoCliente = cli.creditaHoje ? r2(N0 * pisNaoCum) : 0;
-  hoje.custoCliente = clienteHoje;
+  // Hoje só o Lucro Real credita PIS/Cofins; os demais pagam a nota inteira.
+  hoje.creditoCliente = 0;
+  hoje.custoCliente = N0;
+  hoje.custoClienteLR = r2(N0 - r2(N0 * pisNaoCum));
 
   // --- Memória dos cenários --------------------------------------------------
   const infoCtx = { ent, taxas, ctxHoje, ctxAno, despesas, margem, mDivisor, ehReal, irLr, chaveS, cHoje, cAno, L0, N0, lairAlvo, precoHojeInformado, cli, parcela, das, pisNaoCum };
@@ -624,16 +637,26 @@ function registrarCenario(mem, id, c, x) {
   let cliF;
   let cliS;
   if (hoje) {
-    cliF = cli.creditaHoje ? 'Cliente do Lucro Real: nota − crédito de PIS/Cofins (9,25%)' : 'Cliente não toma crédito hoje: paga a nota';
-    cliS = cli.creditaHoje ? `${R(c.nota)} − ${R(c.nota)} × ${P(pisNaoCum)} = ${R(c.custoCliente)}` : R(c.custoCliente);
+    cliF = cli.regular
+      ? 'Hoje, empresa do Presumido ou do Simples não credita PIS/Cofins: paga a nota inteira (Lucro Real: ver linha própria)'
+      : 'Cliente não toma crédito hoje: paga a nota';
+    cliS = R(c.custoCliente);
   } else if (c.creditoCliente) {
     cliF = ctx.porFora ? 'Cliente que credita: nota − IBS/CBS destacado' : 'Cliente que credita, vendedor do Simples: nota − parcela de IBS/CBS do DAS';
     cliS = ctx.porFora ? `${R(c.nota)} − ${R(c.ibsCbs)} = ${R(c.custoCliente)}` : `${R(c.nota)} − ${R(c.preco)} × ${P(das)} × ${R(parcela * 100)}% = ${R(c.custoCliente)}`;
   } else {
-    cliF = 'Cliente que não credita (consumidor final, uso pessoal ou Simples): paga a nota inteira';
+    cliF = 'Cliente que não credita (consumidor final, uso e consumo pessoal ou Simples não optante): paga a nota inteira';
     cliS = R(c.custoCliente);
   }
   mem.reg(k('custoCliente'), c.custoCliente, { rotulo: `Custo para o cliente · ${cen}`, formula: `${cli.nome}: ${cliF}`, subst: cliS, base: hoje ? BL.pisNaoCum : BL.credito });
+  if (hoje) {
+    mem.reg(k('custoClienteLR'), c.custoClienteLR, {
+      rotulo: 'Custo hoje para cliente do Lucro Real',
+      formula: 'Nota − crédito de PIS/Cofins não cumulativo',
+      subst: `${R(c.nota)} − ${R(c.nota)} × ${P(pisNaoCum)} = ${R(c.custoClienteLR)}`,
+      base: BL.pisNaoCum,
+    });
+  }
   if (!hoje) {
     mem.reg(k('custoClienteCredita'), r2(c.nota - (ctx.porFora ? c.ibsCbs : r2(c.preco * das * parcela))), {
       rotulo: `Cliente que credita · ${cen}`,

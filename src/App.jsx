@@ -12,7 +12,16 @@ const CHAVE = 'calc-preco-reforma-v1';
 function lerSalvo() {
   try {
     const s = JSON.parse(localStorage.getItem(CHAVE));
-    if (s && s.ent && s.p) return { ent: { ...ENTRADAS_PADRAO, ...s.ent }, p: { ...PREMISSAS_PADRAO, ...s.p } };
+    if (s && s.ent && s.p) {
+      const ent = { ...ENTRADAS_PADRAO, ...s.ent };
+      if (!CLIENTES[ent.cliente]) ent.cliente = { real: 'regular', presumido_hibrido: 'regular', simples_unico: 'simples' }[ent.cliente] || 'consumidor';
+      const p = { ...PREMISSAS_PADRAO, ...s.p };
+      // versões anteriores gravavam os padrões do IBS como números; volta a tratá-los como padrão
+      const antigo = { 2027: 0.1, 2028: 0.1, 2033: 18.7 };
+      p.ibsAno = { ...p.ibsAno };
+      for (const [ano, v] of Object.entries(antigo)) if (p.ibsAno[ano] === v) p.ibsAno[ano] = null;
+      return { ent, p };
+    }
   } catch {
     /* sem armazenamento: usa o padrão */
   }
