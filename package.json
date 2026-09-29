@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "npm test && vite build && gh-pages -d dist"
+    "deploy": "npm test && vite build && node scripts/deploy.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
