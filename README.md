@@ -9,7 +9,7 @@ npm test        # casos da seção 9 da especificação, ao centavo
 npm run build   # gera dist/
 ```
 
-A cada push na branch `main`, o GitHub Actions roda os testes e publica no GitHub Pages.
+Para publicar, rode `npm run deploy`: ele roda os testes, gera o build e envia para a branch `gh-pages`, que o GitHub Pages serve.
 
 ## Estrutura
 
